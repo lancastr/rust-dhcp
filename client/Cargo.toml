@@ -1,0 +1,12 @@
+[package]
+name = "client"
+version = "0.1.0"
+authors = ["hedgar <hedgar2017@gmail.com>"]
+
+[dependencies]
+tokio = "0.1.7"
+tokio-timer = "0.2.4"
+futures = "0.1.21"
+eui48 = "0.3.2"
+
+protocol = { path = "../protocol" }

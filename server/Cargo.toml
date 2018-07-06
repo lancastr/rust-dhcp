@@ -1,0 +1,11 @@
+[package]
+name = "server"
+version = "0.1.0"
+authors = ["hedgar <hedgar2017@gmail.com>"]
+
+[dependencies]
+tokio = "0.1.7"
+futures = "0.1.21"
+hostname = "0.1.5"
+
+protocol = { path = "../protocol" }

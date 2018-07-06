@@ -1,0 +1,10 @@
+[package]
+name = "protocol"
+version = "0.1.0"
+authors = ["hedgar <hedgar2017@gmail.com>"]
+
+[dependencies]
+tokio = "0.1.7"
+tokio-codec = "0.1.0"
+bytes = "0.4.8"
+eui48 = "0.3.2"
