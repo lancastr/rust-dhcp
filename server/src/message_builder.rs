@@ -36,12 +36,13 @@ impl MessageBuilder {
         discover            : &Message,
         your_ip_address     : Ipv4Addr,
     ) -> Message {
-        let mut options = Options::new();
-        options.address_time = match discover.options.address_time {
-            Some(value) => Some(cmp::min(value, MAX_LEASE_TIME)),
-            None => Some(MAX_LEASE_TIME),
+        let options = Options {
+            address_time: match discover.options.address_time {
+                Some(value) => Some(cmp::min(value, MAX_LEASE_TIME)),
+                None => Some(MAX_LEASE_TIME),
+            },
+            message_type: Some(MessageType::Offer),
         };
-        options.message_type = Some(MessageType::Offer);
 
         Message {
             operation_code              : OperationCode::BootReply,

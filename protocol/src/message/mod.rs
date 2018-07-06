@@ -4,7 +4,6 @@ mod options;
 
 use std::{
     fmt,
-    string::ToString,
     net::Ipv4Addr,
 };
 use eui48::{
@@ -14,11 +13,15 @@ use eui48::{
 
 mod constants {
     pub const SIZE_HEADER_REQUIRED: usize       = 240;
+
+    pub const SIZE_FLAGS: usize                 = 16;
     pub const SIZE_HARDWARE_ADDRESS: usize      = 16;
     pub const SIZE_SERVER_NAME: usize           = 64;
     pub const SIZE_BOOT_FILENAME: usize         = 128;
 
-    pub const MAGIC_COOKIE: u32                 = 0x63825363;
+    pub const FLAG_BROADCAST: u16               = 0x0001;
+
+    pub const MAGIC_COOKIE: &'static [u8]       = &[0x63, 0x82, 0x53, 0x63];
 }
 
 pub use self::{
@@ -57,62 +60,6 @@ pub struct Message {
 
 #[allow(dead_code)]
 impl Message {
-    pub fn empty() -> Self {
-        Message {
-            operation_code              : OperationCode::Undefined,
-            hardware_type               : HardwareType::Undefined,
-            hardware_address_length     : 0u8,
-            hardware_options            : 0u8,
-
-            transaction_identifier      : 0u32,
-            seconds                     : 0u16,
-            is_broadcast                : false,
-
-            client_ip_address           : Ipv4Addr::new(0,0,0,0),
-            your_ip_address             : Ipv4Addr::new(0,0,0,0),
-            server_ip_address           : Ipv4Addr::new(0,0,0,0),
-            gateway_ip_address          : Ipv4Addr::new(0,0,0,0),
-
-            client_hardware_address     : MacAddress::nil(),
-            server_name                 : String::new(),
-            boot_filename               : String::new(),
-
-            options                     : Options::new(),
-        }
-    }
-
-    pub fn discover<>(
-        transaction_identifier  : u32,
-        client_hardware_address : MacAddress,
-        address_time            : Option<u32>,
-    ) -> Self {
-        let mut options = Options::new();
-        options.address_time = address_time;
-        options.message_type = Some(MessageType::Discover);
-
-        Message {
-            operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Ethernet,
-            hardware_address_length     : EUI48LEN as u8,
-            hardware_options            : 0u8,
-
-            transaction_identifier,
-            seconds                     : 0u16,
-            is_broadcast                : true,
-
-            client_ip_address           : Ipv4Addr::new(0,0,0,0),
-            your_ip_address             : Ipv4Addr::new(0,0,0,0),
-            server_ip_address           : Ipv4Addr::new(0,0,0,0),
-            gateway_ip_address          : Ipv4Addr::new(0,0,0,0),
-
-            client_hardware_address,
-            server_name                 : String::new(),
-            boot_filename               : String::new(),
-
-            options,
-        }
-    }
-
     pub fn is_valid(&self) -> bool {
         match self.hardware_type {
             HardwareType::Undefined => return false,
@@ -164,7 +111,7 @@ impl fmt::Display for Message {
         writeln!(f, "Server name                : {}", self.server_name)?;
         writeln!(f, "Boot filename              : {}", self.boot_filename)?;
 
-        writeln!(f, "Magic cookie               : 0x{:x}", MAGIC_COOKIE)?;
+        writeln!(f, "Magic cookie               : 0x{:x?}", MAGIC_COOKIE)?;
         writeln!(f, "Options                    : {:?}", self.options)?;
 
         Ok(())

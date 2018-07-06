@@ -30,9 +30,10 @@ impl MessageBuilder {
     >(
         &self,
     ) -> Message {
-        let mut options = Options::new();
-        options.address_time = Some(3600);
-        options.message_type = Some(MessageType::Discover);
+        let options = Options{
+            address_time: Some(3600),
+            message_type: Some(MessageType::Discover),
+        };
 
         Message {
             operation_code              : OperationCode::BootRequest,

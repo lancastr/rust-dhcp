@@ -1,5 +1,5 @@
 mod client;
-mod builder;
+mod message_builder;
 
 extern crate protocol;
 

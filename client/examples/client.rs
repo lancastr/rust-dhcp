@@ -4,12 +4,11 @@ extern crate eui48;
 
 extern crate client;
 
-use std::net::Ipv4Addr;
 use tokio::prelude::*;
 
 fn main() {
     let future = client::Client::new(
-        Some(Ipv4Addr::new(192,168,0,12)),
+        None,
     )
         .unwrap()
         .map_err(|error| println!("{}", error))

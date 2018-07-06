@@ -29,31 +29,3 @@ pub struct Options {
 
     pub message_type                : Option<MessageType>,
 }
-
-impl Options {
-    pub fn new() -> Self {
-        Options {
-//            subnet_mask                 : None,
-//            time_offset                 : None,
-//            routers                     : None,
-//            time_servers                : None,
-//            name_servers                : None,
-//            domain_servers              : None,
-//            log_servers                 : None,
-//            quotes_servers              : None,
-//            lpr_servers                 : None,
-//            hostname                    : None,
-//            boot_file_size              : None,
-//            merit_dump_file             : None,
-//            domain_name                 : None,
-//            swap_server                 : None,
-//            root_path                   : None,
-//            extensions_path             : None,
-
-            address_time                : None,
-
-            message_type                : None,
-        }
-    }
-}
-

@@ -16,7 +16,7 @@ use eui48::{
 };
 
 use protocol::*;
-use builder::MessageBuilder;
+use message_builder::MessageBuilder;
 
 enum State {
     Init,

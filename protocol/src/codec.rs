@@ -7,8 +7,8 @@ use tokio_codec::{
     Encoder,
 };
 use tokio;
+use nom::*;
 use bytes::{
-    Buf,
     BytesMut,
     BufMut,
 };
@@ -21,11 +21,66 @@ use super::message::*;
 
 pub struct Codec;
 
-macro_rules! distance {
-    ($cursor:expr, $distance:expr) => {
-        $cursor.position() as usize..$cursor.position() as usize + $distance
-    }
-}
+named!(parse_message<&[u8], Message>,
+    do_parse!(
+        operation_code              : be_u8 >>
+        hardware_type               : be_u8 >>
+        hardware_address_length     : be_u8 >>
+        hardware_options            : be_u8 >>
+
+        transaction_identifier      : be_u32 >>
+        seconds                     : be_u16 >>
+        flags                       : bits!(take_bits!(u16, SIZE_FLAGS)) >>
+
+        client_ip_address           : be_u32 >>
+        your_ip_address             : be_u32 >>
+        server_ip_address           : be_u32 >>
+        gateway_ip_address          : be_u32 >>
+
+        client_hardware_address     : take!(SIZE_HARDWARE_ADDRESS) >>
+        server_name                 : take!(SIZE_SERVER_NAME) >>
+        boot_filename               : take!(SIZE_BOOT_FILENAME) >>
+
+                                      tag!(MAGIC_COOKIE) >>
+
+        address_time                : alt!(
+                                          tag!(&[OptionTag::AddressTime as u8, 0x04u8])
+                                          be_u32
+                                      ) >>
+        message_type                : alt!(
+                                          tag!(&[OptionTag::MessageType as u8, 0x01u8])
+                                          be_u8
+                                      ) >>
+
+                                      tag!(&[OptionTag::End as u8]) >>
+
+        (Message{
+            operation_code: operation_code.into(),
+            hardware_type: hardware_type.into(),
+            hardware_address_length,
+            hardware_options,
+
+            transaction_identifier,
+            seconds,
+            is_broadcast: flags & FLAG_BROADCAST == 1,
+
+            client_ip_address: Ipv4Addr::from(client_ip_address),
+            your_ip_address: Ipv4Addr::from(your_ip_address),
+            server_ip_address: Ipv4Addr::from(server_ip_address),
+            gateway_ip_address: Ipv4Addr::from(gateway_ip_address),
+
+            client_hardware_address: MacAddress::from_bytes(&client_hardware_address[..EUI48LEN]).unwrap_or_default(),
+            server_name: String::from_utf8_lossy(server_name).to_string(),
+            boot_filename: String::from_utf8_lossy(boot_filename).to_string(),
+
+            options: Options{
+                address_time                : Some(address_time),
+
+                message_type                : Some(message_type.into()),
+            },
+        })
+    )
+);
 
 impl Decoder for Codec {
     type Item = Message;
@@ -36,61 +91,35 @@ impl Decoder for Codec {
             return Ok(None);
         }
 
-        let mut cursor = ::std::io::Cursor::new(src.as_ref());
-        let mut message = Message::empty();
-        message.operation_code              = cursor.get_u8().into();
-        message.hardware_type               = cursor.get_u8().into();
-        message.hardware_address_length     = cursor.get_u8();
-        message.hardware_options            = cursor.get_u8();
-
-        message.transaction_identifier      = cursor.get_u32_be();
-        message.seconds                     = cursor.get_u16_be();
-        message.is_broadcast                = cursor.get_u16_be() & 0x0001 == 1;
-
-        message.client_ip_address           = Ipv4Addr::from(cursor.get_u32_be());
-        message.your_ip_address             = Ipv4Addr::from(cursor.get_u32_be());
-        message.server_ip_address           = Ipv4Addr::from(cursor.get_u32_be());
-        message.gateway_ip_address          = Ipv4Addr::from(cursor.get_u32_be());
-
-        match MacAddress::from_bytes(&src[distance!(cursor, EUI48LEN)]) {
-            Ok(address) => message.client_hardware_address = address,
+        let message = match parse_message(src.as_ref()) {
+            Ok((_, message)) => message,
             Err(_) => return Ok(None),
-        }
-        cursor.advance(SIZE_HARDWARE_ADDRESS);
+        };
+        println!("{}", message);
 
-        message.server_name = String::from_utf8_lossy(&src[distance!(cursor, SIZE_SERVER_NAME)]).into();
-        cursor.advance(SIZE_SERVER_NAME);
-
-        message.boot_filename = String::from_utf8_lossy(&src[distance!(cursor, SIZE_BOOT_FILENAME)]).into();
-        cursor.advance(SIZE_BOOT_FILENAME);
-
-        if cursor.get_u32_be() != MAGIC_COOKIE {
-            return Ok(None);
-        }
-
-        while cursor.remaining() > 0 {
-            use self::OptionTag::*;
-
-            match cursor.get_u8().into() {
-                Pad => continue,
-                AddressTime => {
-                    if cursor.remaining() < mem::size_of::<u32>() + 1 {
-                        return Ok(None);
-                    }
-                    let _length = cursor.get_u8();
-                    message.options.address_time = Some(cursor.get_u32_be());
-                },
-                MessageType => {
-                    if cursor.remaining() < mem::size_of::<u8>() + 1 {
-                        return Ok(None);
-                    }
-                    let _length = cursor.get_u8();
-                    message.options.message_type = Some(cursor.get_u8().into());
-                },
-                End => break,
-                value @ _ => println!("Strange value: {}", value as u8),
-            }
-        }
+//        while cursor.remaining() > 0 {
+//            use self::OptionTag::*;
+//
+//            match cursor.get_u8().into() {
+//                Pad => continue,
+//                AddressTime => {
+//                    if cursor.remaining() < mem::size_of::<u32>() + 1 {
+//                        return Ok(None);
+//                    }
+//                    let _length = cursor.get_u8();
+//                    message.options.address_time = Some(cursor.get_u32_be());
+//                },
+//                MessageType => {
+//                    if cursor.remaining() < mem::size_of::<u8>() + 1 {
+//                        return Ok(None);
+//                    }
+//                    let _length = cursor.get_u8();
+//                    message.options.message_type = Some(cursor.get_u8().into());
+//                },
+//                End => break,
+//                value @ _ => println!("Strange value: {}", value as u8),
+//            }
+//        }
 
         if !message.is_valid() {
             return Ok(None);
@@ -128,17 +157,17 @@ impl Encoder for Codec {
         dst.put(message.boot_filename.as_bytes());
         dst.put(vec![0u8; SIZE_BOOT_FILENAME - message.boot_filename.len()]); // (128 - length) byte padding
 
-        dst.put_u32_be(MAGIC_COOKIE);
+        dst.put(MAGIC_COOKIE);
 
-        if let Some(value) = message.options.message_type {
-            dst.put_u8(OptionTag::MessageType as u8);
-            dst.put_u8(mem::size_of::<u8>() as u8);
-            dst.put_u8(value as u8);
-        }
         if let Some(value) = message.options.address_time {
             dst.put_u8(OptionTag::AddressTime as u8);
             dst.put_u8(mem::size_of::<u32>() as u8);
             dst.put_u32_be(value);
+        }
+        if let Some(value) = message.options.message_type {
+            dst.put_u8(OptionTag::MessageType as u8);
+            dst.put_u8(mem::size_of::<u8>() as u8);
+            dst.put_u8(value as u8);
         }
         dst.put_u8(OptionTag::End as u8);
 

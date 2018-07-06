@@ -3,6 +3,7 @@ mod codec;
 
 extern crate tokio;
 extern crate tokio_codec;
+#[macro_use] extern crate nom;
 extern crate bytes;
 extern crate eui48;
 

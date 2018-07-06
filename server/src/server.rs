@@ -14,7 +14,7 @@ use tokio::{
 use hostname;
 
 use protocol::*;
-use builder::MessageBuilder;
+use message_builder::MessageBuilder;
 
 pub struct Server {
     socket          : UdpFramed<Codec>,
@@ -55,8 +55,8 @@ impl Future for Server {
                 Some(MessageType::Discover) => {
                     let offer = self.message_builder.offer(&message, Ipv4Addr::new(1,2,3,4));
 
-                    println!("{}", message);
-                    println!("{}", offer);
+                    println!("Discover:\n{}", message);
+                    println!("Offer:\n{}", offer);
 
                     self.socket.start_send((offer, addr)).into_future().wait();
                     self.socket.poll_complete().into_future().wait();
