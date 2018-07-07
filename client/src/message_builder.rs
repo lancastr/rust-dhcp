@@ -7,6 +7,7 @@ use eui48::{
     MacAddress,
     EUI48LEN,
 };
+use rand;
 
 use protocol::*;
 
@@ -22,7 +23,7 @@ impl MessageBuilder {
     ) -> Self {
         MessageBuilder {
             client_hardware_address: client_hardware_address.to_owned(),
-            transaction_identifier: 0xFFFFFFFF,
+            transaction_identifier: rand::random::<u32>(),
         }
     }
 

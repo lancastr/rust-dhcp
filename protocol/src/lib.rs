@@ -1,10 +1,9 @@
 mod message;
 mod codec;
+mod parser;
 
-extern crate tokio;
-extern crate tokio_codec;
-#[macro_use] extern crate nom;
 extern crate bytes;
+#[macro_use] extern crate nom;
 extern crate eui48;
 
 pub const UDP_PORT_SERVER: u16 = 10067;

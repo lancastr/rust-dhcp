@@ -5,8 +5,10 @@ authors = ["hedgar <hedgar2017@gmail.com>"]
 
 [dependencies]
 tokio = "0.1.7"
-tokio-timer = "0.2.4"
 futures = "0.1.21"
+bytes = "0.4.8"
 eui48 = "0.3.2"
+rand = "0.5.3"
 
 protocol = { path = "../protocol" }
+framed = { path = "../framed" }

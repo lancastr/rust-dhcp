@@ -12,8 +12,6 @@ use eui48::{
 };
 
 mod constants {
-    pub const SIZE_HEADER_REQUIRED: usize       = 240;
-
     pub const SIZE_FLAGS: usize                 = 16;
     pub const SIZE_HARDWARE_ADDRESS: usize      = 16;
     pub const SIZE_SERVER_NAME: usize           = 64;

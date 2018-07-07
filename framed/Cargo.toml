@@ -1,9 +1,10 @@
 [package]
-name = "protocol"
+name = "framed"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
 
 [dependencies]
-bytes = "0.4.8"
-nom = "4.0.0"
-eui48 = "0.3.2"
+tokio = "0.1.7"
+futures = "0.1.21"
+
+protocol = { path = "../protocol" }

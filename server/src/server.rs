@@ -5,27 +5,23 @@ use std::net::{
 };
 use tokio::{
     io,
-    net::{
-        UdpSocket,
-        UdpFramed,
-    },
     prelude::*,
 };
 use hostname;
 
 use protocol::*;
+use framed::DhcpFramed;
 use message_builder::MessageBuilder;
 
 pub struct Server {
-    socket          : UdpFramed<Codec>,
+    socket          : DhcpFramed,
     message_builder : MessageBuilder,
 }
 
 impl Server {
     pub fn new() -> Result<Self, io::Error> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), 10067);
-        let socket = UdpSocket::bind(&addr)?;
-        let socket = UdpFramed::new(socket, Codec);
+        let socket = DhcpFramed::new(addr)?;
 
         let message_builder = MessageBuilder::new(
             &Ipv4Addr::new(192,168,0,12),
@@ -46,9 +42,13 @@ impl Future for Server {
 
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            let (message, addr) = match try_ready!(self.socket.poll()) {
-                Some((message, addr)) => (message, addr),
-                None => continue,
+            let (addr, message) = match self.socket.poll() {
+                Ok(Async::Ready(Some(data))) => data,
+                Err(error) => {
+                    println!("Error: {}", error);
+                    continue;
+                },
+                _ => continue,
             };
 
             match message.options.message_type {
@@ -58,8 +58,7 @@ impl Future for Server {
                     println!("Discover:\n{}", message);
                     println!("Offer:\n{}", offer);
 
-                    self.socket.start_send((offer, addr)).into_future().wait();
-                    self.socket.poll_complete().into_future().wait();
+                    self.socket.start_send((addr, offer))?;
                 },
                 Some(MessageType::Request) => continue,
                 Some(MessageType::Decline) => continue,

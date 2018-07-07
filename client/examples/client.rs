@@ -1,6 +1,4 @@
 extern crate tokio;
-extern crate tokio_timer;
-extern crate eui48;
 
 extern crate client;
 
