@@ -16,6 +16,8 @@ use message_builder::MessageBuilder;
 pub struct Server {
     socket          : DhcpFramed,
     message_builder : MessageBuilder,
+
+    pending         : bool,
 }
 
 impl Server {
@@ -32,6 +34,8 @@ impl Server {
         Ok(Server {
             socket,
             message_builder,
+
+            pending: false,
         })
     }
 }
@@ -42,29 +46,35 @@ impl Future for Server {
 
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            let (addr, message) = match self.socket.poll() {
-                Ok(Async::Ready(Some(data))) => data,
-                Err(error) => {
-                    println!("Error: {}", error);
-                    continue;
-                },
-                _ => continue,
-            };
+            if self.pending {
+                match self.socket.poll_complete()? {
+                    Async::Ready(_) => self.pending = false,
+                    Async::NotReady => return Ok(Async::NotReady),
+                }
+            }
 
-            match message.options.message_type {
-                Some(MessageType::Discover) => {
-                    let offer = self.message_builder.offer(&message, Ipv4Addr::new(1,2,3,4));
+            if let Some((addr, message)) = try_ready!(self.socket.poll()) {
+                match message.options.message_type {
+                    Some(MessageType::Discover) => {
+                        let offer = self.message_builder.offer(&message, Ipv4Addr::new(1,2,3,4));
 
-                    println!("Discover:\n{}", message);
-                    println!("Offer:\n{}", offer);
+                        println!("Discover:\n{}", message);
+                        println!("Offer:\n{}", offer);
 
-                    self.socket.start_send((addr, offer))?;
-                },
-                Some(MessageType::Request) => continue,
-                Some(MessageType::Decline) => continue,
-                Some(MessageType::Release) => continue,
-                Some(MessageType::Inform) => continue,
-                _ => continue,
+                        match self.socket.start_send((addr, offer))? {
+                            AsyncSink::Ready => {
+                                self.pending = true;
+                                continue;
+                            },
+                            AsyncSink::NotReady(_) => return Ok(Async::NotReady),
+                        }
+                    },
+                    Some(MessageType::Request) => {},
+                    Some(MessageType::Decline) => {},
+                    Some(MessageType::Release) => {},
+                    Some(MessageType::Inform) => {},
+                    _ => {},
+                }
             }
         }
     }

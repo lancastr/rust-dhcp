@@ -16,6 +16,8 @@ pub struct DhcpFramed {
     socket      : UdpSocket,
     buf_read    : Vec<u8>,
     buf_write   : Vec<u8>,
+
+    pending     : Option<(SocketAddr, usize)>,
 }
 
 impl DhcpFramed {
@@ -27,6 +29,8 @@ impl DhcpFramed {
             socket,
             buf_read: vec![0u8; BUFFER_READ_CAPACITY],
             buf_write: vec![0u8; BUFFER_WRITE_CAPACITY],
+
+            pending: None,
         })
     }
 }
@@ -52,19 +56,33 @@ impl Sink for DhcpFramed {
     type SinkError = io::Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, io::Error> {
+        if self.pending.is_some() {
+            self.poll_complete()?;
+            if self.pending.is_some() {
+                return Ok(AsyncSink::NotReady(item));
+            }
+        }
+
         let (addr, message) = item;
         let amount = Codec::encode(&message, &mut self.buf_write)?;
-        let sent = match self.socket.poll_send_to(&self.buf_write[..amount], &addr)? {
-            Async::Ready(sent) => sent,
-            Async::NotReady => return Ok(AsyncSink::NotReady((addr, message))),
-        };
-        if sent != amount {
-            return Err(io::Error::new(io::ErrorKind::WriteZero, "Failed to write entire datagram to socket"));
-        }
+        self.pending = Some((addr, amount));
+        self.poll_complete()?;
+
         Ok(AsyncSink::Ready)
     }
 
     fn poll_complete(&mut self) -> Poll<(), io::Error> {
+        match self.pending {
+            None => return Ok(Async::Ready(())),
+            Some((addr, amount)) => {
+                let sent = try_ready!(self.socket.poll_send_to(&self.buf_write[..amount], &addr));
+                if sent != amount {
+                    return Err(io::Error::new(io::ErrorKind::WriteZero, "Failed to write entire datagram to socket"));
+                }
+            },
+        }
+        self.pending = None;
+
         Ok(Async::Ready(()))
     }
 

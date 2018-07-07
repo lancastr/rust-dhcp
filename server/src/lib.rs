@@ -5,7 +5,7 @@ extern crate protocol;
 extern crate framed;
 
 extern crate tokio;
-extern crate futures;
+#[macro_use] extern crate futures;
 extern crate bytes;
 extern crate eui48;
 extern crate hostname;

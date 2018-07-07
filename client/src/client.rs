@@ -26,6 +26,8 @@ pub struct Client {
 
     message_builder     : MessageBuilder,
     state               : State,
+
+    pending             : bool,
 }
 
 impl Client {
@@ -56,6 +58,8 @@ impl Client {
 
             message_builder,
             state: State::Init,
+
+            pending: false,
         })
     }
 }
@@ -66,20 +70,29 @@ impl Future for Client {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
+            if self.pending {
+                match self.socket.poll_complete()? {
+                    Async::Ready(_) => self.pending = false,
+                    Async::NotReady => return Ok(Async::NotReady),
+                }
+            }
+
             match self.state {
                 State::Init => {
                     let discover = self.message_builder.discover();
-
-                    match self.socket.start_send((self.server_addr, discover)) {
-                        Ok(AsyncSink::Ready) => self.state = State::Selecting,
-                        Ok(AsyncSink::NotReady(_)) => return Ok(Async::NotReady),
-                        Err(error) => return Err(error),
+                    match self.socket.start_send((self.server_addr, discover))? {
+                        AsyncSink::Ready => {
+                            self.pending = true;
+                            self.state = State::Selecting;
+                            continue;
+                        },
+                        AsyncSink::NotReady(_) => return Ok(Async::NotReady),
                     }
                 },
                 State::Selecting => {
                     let (offer, addr) = match try_ready!(self.socket.poll()) {
                         Some((offer, addr)) => (offer, addr),
-                        None => return Ok(Async::NotReady),
+                        None => continue,
                     };
 
                     return Ok(Async::Ready(Some((addr, offer))));
