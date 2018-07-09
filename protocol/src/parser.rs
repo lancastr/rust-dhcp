@@ -28,6 +28,8 @@ named!(pub parse_message<&[u8], Message>,
         boot_filename               : map!(take!(SIZE_BOOT_FILENAME), |v| String::from_utf8_lossy(v).to_string()) >>
 
                                       tag!(MAGIC_COOKIE) >>
+        subnet_mask                 : preceded!(tag!(&[OptionTag::SubnetMask as u8, 4u8]), map!(be_u32, |v| Some(Ipv4Addr::from(v)))) >>
+        address_request             : preceded!(tag!(&[OptionTag::AddressRequest as u8, 4u8]), map!(be_u32, |v| Some(Ipv4Addr::from(v)))) >>
         address_time                : preceded!(tag!(&[OptionTag::AddressTime as u8, 4u8]), map!(be_u32, |v| Some(v))) >>
         message_type                : preceded!(tag!(&[OptionTag::MessageType as u8, 1u8]), map!(be_u8, |v| Some(v.into()))) >>
                                       tag!(&[OptionTag::End as u8]) >>
@@ -52,6 +54,8 @@ named!(pub parse_message<&[u8], Message>,
             boot_filename,
 
             options: Options{
+                subnet_mask,
+                address_request,
                 address_time,
                 message_type,
             },

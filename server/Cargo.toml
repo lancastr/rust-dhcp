@@ -9,6 +9,7 @@ futures = "0.1.21"
 bytes = "0.4.8"
 eui48 = "0.3.2"
 hostname = "0.1.5"
+chrono = "0.4.4"
 
 protocol = { path = "../protocol" }
 framed = { path = "../framed" }

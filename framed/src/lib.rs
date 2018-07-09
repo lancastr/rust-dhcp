@@ -5,4 +5,10 @@ extern crate tokio;
 
 extern crate protocol;
 
+mod constants {
+    pub const UDP_PORT_SERVER: u16 = 67 + 10000;
+    pub const UDP_PORT_CLIENT: u16 = 68 + 10000;
+}
+
 pub use socket::DhcpFramed;
+pub use constants::*;

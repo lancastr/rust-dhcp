@@ -12,7 +12,7 @@ use eui48::{
 };
 
 use protocol::*;
-use framed::DhcpFramed;
+use framed::*;
 use message_builder::MessageBuilder;
 
 enum State {
@@ -37,7 +37,10 @@ impl Client {
     ///     None to use broadcast
     ///
     pub fn new(
-        server_addr: Option<Ipv4Addr>,
+        server_addr             : Option<Ipv4Addr>,
+
+        client_id               : u32,
+        client_hardware_address : MacAddress,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), UDP_PORT_CLIENT);
         let socket = DhcpFramed::new(addr)?;
@@ -49,7 +52,8 @@ impl Client {
         }), UDP_PORT_SERVER);
 
         let message_builder = MessageBuilder::new(
-            &MacAddress::new([0x01,0x02,0x03,0x04,0x05,0x06]),
+            client_id,
+            client_hardware_address,
         );
 
         Ok(Client {

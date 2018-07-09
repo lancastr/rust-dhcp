@@ -6,9 +6,6 @@ extern crate bytes;
 #[macro_use] extern crate nom;
 extern crate eui48;
 
-pub const UDP_PORT_SERVER: u16 = 10067;
-pub const UDP_PORT_CLIENT: u16 = 10068;
-
 pub use message::{
     Message,
     MessageType,

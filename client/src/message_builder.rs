@@ -7,23 +7,23 @@ use eui48::{
     MacAddress,
     EUI48LEN,
 };
-use rand;
 
 use protocol::*;
 
 pub struct MessageBuilder {
-    client_hardware_address     : MacAddress,
     transaction_identifier      : u32,
+    client_hardware_address     : MacAddress,
 }
 
 impl MessageBuilder {
     pub fn new<
     >(
-        client_hardware_address: &MacAddress,
+        transaction_identifier  : u32,
+        client_hardware_address : MacAddress,
     ) -> Self {
         MessageBuilder {
-            client_hardware_address: client_hardware_address.to_owned(),
-            transaction_identifier: rand::random::<u32>(),
+            transaction_identifier,
+            client_hardware_address,
         }
     }
 
@@ -32,8 +32,10 @@ impl MessageBuilder {
         &self,
     ) -> Message {
         let options = Options{
-            address_time: Some(3600),
-            message_type: Some(MessageType::Discover),
+            subnet_mask     : Some(Ipv4Addr::new(255,255,0,0)),
+            address_request : Some(Ipv4Addr::new(192,168,0,150)),
+            address_time    : Some(10),
+            message_type    : Some(MessageType::Discover),
         };
 
         Message {

@@ -4,11 +4,11 @@ mod message_type;
 pub use self::option_tag::OptionTag;
 pub use self::message_type::MessageType;
 
-//use std::net::Ipv4Addr;
+use std::net::Ipv4Addr;
 
 #[derive(Debug)]
 pub struct Options {
-//    pub subnet_mask                 : Option<Ipv4Addr>,
+    pub subnet_mask                 : Option<Ipv4Addr>,
 //    pub time_offset                 : Option<i32>,
 //    pub routers                     : Option<Vec<Ipv4Addr>>,
 //    pub time_servers                : Option<Vec<Ipv4Addr>>,
@@ -25,6 +25,7 @@ pub struct Options {
 //    pub root_path                   : Option<String>,
 //    pub extensions_path             : Option<String>,
 
+    pub address_request             : Option<Ipv4Addr>,
     pub address_time                : Option<u32>,
 
     pub message_type                : Option<MessageType>,

@@ -52,6 +52,16 @@ impl Codec {
         cursor.put(vec![0u8; SIZE_BOOT_FILENAME - message.boot_filename.len()]); // (128 - length) byte padding
 
         cursor.put(MAGIC_COOKIE);
+        if let Some(value) = message.options.subnet_mask {
+            cursor.put_u8(OptionTag::SubnetMask as u8);
+            cursor.put_u8(mem::size_of::<u32>() as u8);
+            cursor.put_u32_be(u32::from(value));
+        }
+        if let Some(value) = message.options.address_request {
+            cursor.put_u8(OptionTag::AddressRequest as u8);
+            cursor.put_u8(mem::size_of::<u32>() as u8);
+            cursor.put_u32_be(u32::from(value));
+        }
         if let Some(value) = message.options.address_time {
             cursor.put_u8(OptionTag::AddressTime as u8);
             cursor.put_u8(mem::size_of::<u32>() as u8);

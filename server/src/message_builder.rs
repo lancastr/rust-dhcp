@@ -8,9 +8,11 @@ use std::{
 use protocol::*;
 
 pub struct MessageBuilder {
-    server_ip_address   : Ipv4Addr,
-    gateway_ip_address  : Ipv4Addr,
-    server_name         : String,
+    server_ip_address       : Ipv4Addr,
+    gateway_ip_address      : Ipv4Addr,
+    server_name             : String,
+
+    subnet_mask             : Ipv4Addr,
 }
 
 const MAX_LEASE_TIME: u32 = 86400;
@@ -19,14 +21,18 @@ impl MessageBuilder {
     pub fn new<
         S: ToString,
     >(
-        server_ip_address   : &Ipv4Addr,
-        gateway_ip_address  : &Ipv4Addr,
-        server_name         : S
+        server_ip_address       : Ipv4Addr,
+        gateway_ip_address      : Ipv4Addr,
+        server_name             : S,
+
+        subnet_mask             : Ipv4Addr,
     ) -> Self {
         MessageBuilder {
-            server_ip_address: server_ip_address.to_owned(),
-            gateway_ip_address: gateway_ip_address.to_owned(),
+            server_ip_address,
+            gateway_ip_address,
             server_name: server_name.to_string(),
+
+            subnet_mask,
         }
     }
 
@@ -36,12 +42,16 @@ impl MessageBuilder {
         discover            : &Message,
         your_ip_address     : Ipv4Addr,
     ) -> Message {
+        let address_time = match discover.options.address_time {
+            Some(value) => Some(cmp::min(value, MAX_LEASE_TIME)),
+            None => Some(MAX_LEASE_TIME),
+        };
+
         let options = Options {
-            address_time: match discover.options.address_time {
-                Some(value) => Some(cmp::min(value, MAX_LEASE_TIME)),
-                None => Some(MAX_LEASE_TIME),
-            },
-            message_type: Some(MessageType::Offer),
+            subnet_mask         : Some(self.subnet_mask),
+            address_request     : Some(Ipv4Addr::new(0,0,0,0)),
+            address_time,
+            message_type        : Some(MessageType::Offer),
         };
 
         Message {
@@ -56,11 +66,11 @@ impl MessageBuilder {
 
             client_ip_address           : Ipv4Addr::new(0,0,0,0),
             your_ip_address,
-            server_ip_address           : self.server_ip_address.clone(),
-            gateway_ip_address          : self.gateway_ip_address.clone(),
+            server_ip_address           : self.server_ip_address,
+            gateway_ip_address          : discover.gateway_ip_address,
 
             client_hardware_address     : discover.client_hardware_address,
-            server_name                 : self.server_name.clone(),
+            server_name                 : self.server_name.to_owned(),
             boot_filename               : String::new(),
 
             options,

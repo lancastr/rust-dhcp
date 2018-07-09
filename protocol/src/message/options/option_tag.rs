@@ -22,7 +22,8 @@ pub enum OptionTag {
     RootPath,
     ExtensionsPath,
 
-    AddressTime = 51,
+    AddressRequest = 50,
+    AddressTime,
 
     MessageType = 53,
 
@@ -53,6 +54,7 @@ impl From<u8> for OptionTag {
             17 => RootPath,
             18 => ExtensionsPath,
 
+            50 => AddressRequest,
             51 => AddressTime,
 
             53 => MessageType,
