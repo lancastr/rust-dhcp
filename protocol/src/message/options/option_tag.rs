@@ -24,8 +24,11 @@ pub enum OptionTag {
 
     AddressRequest = 50,
     AddressTime,
-
-    MessageType = 53,
+    Overload,
+    DhcpMessageType,
+    DhcpServerId,
+    ParameterList,
+    DhcpMessage,
 
     End,
 }
@@ -56,8 +59,11 @@ impl From<u8> for OptionTag {
 
             50 => AddressRequest,
             51 => AddressTime,
-
-            53 => MessageType,
+            52 => Overload,
+            53 => DhcpMessageType,
+            54 => DhcpServerId,
+            55 => ParameterList,
+            56 => DhcpMessage,
 
             255 => End,
             _ => Pad,

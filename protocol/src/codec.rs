@@ -67,8 +67,8 @@ impl Codec {
             cursor.put_u8(mem::size_of::<u32>() as u8);
             cursor.put_u32_be(value);
         }
-        if let Some(value) = message.options.message_type {
-            cursor.put_u8(OptionTag::MessageType as u8);
+        if let Some(value) = message.options.dhcp_message_type {
+            cursor.put_u8(OptionTag::DhcpMessageType as u8);
             cursor.put_u8(mem::size_of::<u8>() as u8);
             cursor.put_u8(value as u8);
         }

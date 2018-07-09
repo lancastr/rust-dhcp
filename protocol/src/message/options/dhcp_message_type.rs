@@ -1,6 +1,6 @@
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
-pub enum MessageType {
+pub enum DhcpMessageType {
     Undefined = 0,
     // RFC2132
     Discover,
@@ -27,9 +27,9 @@ pub enum MessageType {
     Tls,
 }
 
-impl From<u8> for MessageType {
+impl From<u8> for DhcpMessageType {
     fn from(value: u8) -> Self {
-        use self::MessageType::*;
+        use self::DhcpMessageType::*;
         match value {
             0 => Undefined,
 

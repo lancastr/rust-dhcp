@@ -32,15 +32,17 @@ impl MessageBuilder {
         &self,
     ) -> Message {
         let options = Options{
-            subnet_mask     : Some(Ipv4Addr::new(255,255,0,0)),
-            address_request : Some(Ipv4Addr::new(192,168,0,150)),
-            address_time    : Some(10),
-            message_type    : Some(MessageType::Discover),
+            subnet_mask         : None,
+            address_request     : None,
+            address_time        : Some(1000000),
+            dhcp_message_type   : Some(DhcpMessageType::Discover),
+            dhcp_server_id      : None,
+            dhcp_message        : None,
         };
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Ethernet,
+            hardware_type               : HardwareType::Defined,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 

@@ -28,7 +28,7 @@ pub use self::{
     options::{
         Options,
         OptionTag,
-        MessageType,
+        DhcpMessageType,
     },
     constants::*,
 };
@@ -68,15 +68,15 @@ impl Message {
             return false;
         }
 
-        match self.options.message_type {
+        match self.options.dhcp_message_type {
             None => return false,
-            Some(MessageType::Discover) => {
+            Some(DhcpMessageType::Discover) => {
                 match self.operation_code {
                     OperationCode::BootRequest => (),
                     _ => return false,
                 }
             },
-            Some(MessageType::Offer) => {
+            Some(DhcpMessageType::Offer) => {
                 match self.operation_code {
                     OperationCode::BootReply => (),
                     _ => return false,

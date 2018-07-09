@@ -11,6 +11,7 @@ fn main() {
             Ipv4Addr::new(192,168,0,12),
             Ipv4Addr::new(192,168,0,1),
             Some("The test server".to_owned()),
+            Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
             Ipv4Addr::new(255,255,0,0),
         )

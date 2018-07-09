@@ -43,7 +43,7 @@ impl Client {
         client_hardware_address : MacAddress,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), UDP_PORT_CLIENT);
-        let socket = DhcpFramed::new(addr)?;
+        let socket = DhcpFramed::new(addr, false, false)?;
 
         let server_addr = SocketAddr::new(IpAddr::V4(if let Some(ip) = server_addr {
             ip

@@ -8,7 +8,7 @@ extern crate eui48;
 
 pub use message::{
     Message,
-    MessageType,
+    DhcpMessageType,
     Options,
     OperationCode,
     HardwareType,

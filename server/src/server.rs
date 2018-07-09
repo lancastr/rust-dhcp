@@ -21,8 +21,6 @@ pub struct Server {
     socket                  : DhcpFramed,
     message_builder         : MessageBuilder,
     storage                 : Storage,
-
-    pending                 : bool,
 }
 
 impl Server {
@@ -39,12 +37,13 @@ impl Server {
         gateway_ip_address      : Ipv4Addr,
         server_name             : Option<String>,
 
+        static_address_range    : Range<Ipv4Addr>,
         dynamic_address_range   : Range<Ipv4Addr>,
 
         subnet_mask             : Ipv4Addr,
     ) -> Result<Self, io::Error> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), UDP_PORT_SERVER);
-        let socket = DhcpFramed::new(addr)?;
+        let socket = DhcpFramed::new(addr, false, false)?;
 
         let message_builder = MessageBuilder::new(
             server_ip_address,
@@ -54,14 +53,15 @@ impl Server {
             subnet_mask,
         );
 
-        let storage = Storage::new(dynamic_address_range);
+        let storage = Storage::new(
+            static_address_range,
+            dynamic_address_range,
+        );
 
         Ok(Server {
             socket,
             message_builder,
             storage,
-
-            pending: false,
         })
     }
 }
@@ -72,16 +72,29 @@ impl Future for Server {
 
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            if self.pending {
-                match self.socket.poll_complete()? {
-                    Async::Ready(_) => self.pending = false,
-                    Async::NotReady => return Ok(Async::NotReady),
-                }
+            match self.socket.poll_complete()? {
+                Async::Ready(_) => {},
+                Async::NotReady => return Ok(Async::NotReady),
             }
 
             if let Some((mut addr, request)) = try_ready!(self.socket.poll()) {
-                // RFC 2131 §4.1
-                // SHOULD also be able to send IP datagrams if the broadcast bit is not set (not implemented)
+                /*
+                RFC 2131 §4.1
+                If the 'giaddr' field in a DHCP message from a client is non-zero,
+                the server sends any return messages to the 'DHCP server' port on the
+                BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
+                field is zero and the 'ciaddr' field is nonzero, then the server
+                unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
+                If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
+                set, then the server broadcasts DHCPOFFER and DHCPACK messages to
+                0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
+                'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
+                messages to the client's hardware address and 'yiaddr' address.  In
+                all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
+                messages to 0xffffffff.
+
+                Note: SHOULD also send IP datagrams if the broadcast bit is not set (not implemented)
+                */
                 if !request.gateway_ip_address.is_unspecified() {
                     addr = SocketAddr::new(IpAddr::V4(request.gateway_ip_address), UDP_PORT_SERVER)
                 }
@@ -89,33 +102,29 @@ impl Future for Server {
                     addr = SocketAddr::new(IpAddr::V4(request.client_ip_address), UDP_PORT_CLIENT)
                 }
 
-                match request.options.message_type {
-                    Some(MessageType::Discover) => {
-                        let your_ip_address = self.storage.allocate(
+                match request.options.dhcp_message_type {
+                    Some(DhcpMessageType::Discover) => {
+                        let answer = match self.storage.allocate(
                             request.transaction_identifier,
                             request.options.address_time,
                             request.options.address_request,
-                        ).unwrap(); // TODO handle error
-                        let answer = self.message_builder.offer(
-                            &request,
-                            your_ip_address,
-                        );
+                        ) {
+                            Ok(offer) => self.message_builder.offer(&request, &offer),
+                            _ => panic!("HOLY SHIT"),
+                        };
 
                         println!("Request from {}:\n{}", addr, request);
                         println!("Answer to {}:\n{}", addr, answer);
 
                         match self.socket.start_send((addr, answer))? {
-                            AsyncSink::Ready => {
-                                self.pending = true;
-                                continue;
-                            },
-                            AsyncSink::NotReady(_) => return Ok(Async::NotReady),
+                            AsyncSink::Ready => continue,
+                            AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
                         }
                     },
-                    Some(MessageType::Request) => {},
-                    Some(MessageType::Decline) => {},
-                    Some(MessageType::Release) => {},
-                    Some(MessageType::Inform) => {},
+                    Some(DhcpMessageType::Request) => {},
+                    Some(DhcpMessageType::Decline) => {},
+                    Some(DhcpMessageType::Release) => {},
+                    Some(DhcpMessageType::Inform) => {},
                     _ => {},
                 }
             }

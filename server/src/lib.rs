@@ -2,6 +2,7 @@ mod server;
 mod message_builder;
 mod storage;
 mod lease;
+mod offer;
 
 extern crate protocol;
 extern crate framed;
