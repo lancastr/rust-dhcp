@@ -6,6 +6,7 @@ use std::{
         SocketAddr,
     },
 };
+
 use tokio::{
     io,
     prelude::*,
@@ -14,7 +15,7 @@ use hostname;
 
 use protocol::*;
 use framed::*;
-use message_builder::MessageBuilder;
+use message::MessageBuilder;
 use storage::Storage;
 
 pub struct Server {
@@ -42,7 +43,7 @@ impl Server {
 
         subnet_mask             : Ipv4Addr,
     ) -> Result<Self, io::Error> {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), UDP_PORT_SERVER);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
 
         let message_builder = MessageBuilder::new(
@@ -78,6 +79,12 @@ impl Future for Server {
             }
 
             if let Some((mut addr, request)) = try_ready!(self.socket.poll()) {
+                // report and drop invalid messages
+                if !request.is_valid() {
+                    println!("Invalid message from {}:\n{}", addr, request);
+                    continue;
+                }
+
                 /*
                 RFC 2131 §4.1
                 If the 'giaddr' field in a DHCP message from a client is non-zero,
@@ -95,23 +102,136 @@ impl Future for Server {
 
                 Note: SHOULD also send IP datagrams if the broadcast bit is not set (not implemented)
                 */
-                if !request.gateway_ip_address.is_unspecified() {
-                    addr = SocketAddr::new(IpAddr::V4(request.gateway_ip_address), UDP_PORT_SERVER)
-                }
+
+                // configuration through gateways not required and not supported
+                // if !request.gateway_ip_address.is_unspecified() {
+                //     addr = SocketAddr::new(IpAddr::V4(request.gateway_ip_address), DHCP_PORT_SERVER)
+                // }
+
                 if !request.client_ip_address.is_unspecified() {
-                    addr = SocketAddr::new(IpAddr::V4(request.client_ip_address), UDP_PORT_CLIENT)
+                    addr = SocketAddr::new(IpAddr::V4(request.client_ip_address), DHCP_PORT_CLIENT)
                 }
 
                 match request.options.dhcp_message_type {
                     Some(DhcpMessageType::Discover) => {
-                        let answer = match self.storage.allocate(
+                        match self.storage.allocate(
                             request.transaction_identifier,
                             request.options.address_time,
                             request.options.address_request,
                         ) {
-                            Ok(offer) => self.message_builder.offer(&request, &offer),
-                            _ => panic!("HOLY SHIT"),
+                            Ok(offer) => {
+                                let answer = self.message_builder.dhcp_discover_to_offer(&request, &offer);
+
+                                println!("Request from {}:\n{}", addr, request);
+                                println!("Answer to {}:\n{}", addr, answer);
+
+                                match self.socket.start_send((addr, answer))? {
+                                    AsyncSink::Ready => continue,
+                                    AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                                }
+                            },
+                            Err(error) => println!("Address allocation error: {}", error.to_string()),
                         };
+                    },
+                    Some(DhcpMessageType::Request) => {
+                        /*
+                        RFC 2131 §4.3.2
+                        A DHCPREQUEST message may come from a client responding to a
+                        DHCPOFFER message from a server, from a client verifying a previously
+                        allocated IP address or from a client extending the lease on a
+                        network address.  If the DHCPREQUEST message contains a 'server
+                        identifier' option, the message is in response to a DHCPOFFER
+                        message.  Otherwise, the message is a request to verify or extend an
+                        existing lease.
+                        */
+                        if request.options.dhcp_server_id.is_some() {
+                            // the client is in SELECTING state
+                            match self.storage.assign(
+                                request.transaction_identifier,
+                                request.options.address_request,
+                            ) {
+                                Ok(ack) => {
+                                    let answer = self.message_builder.dhcp_request_to_ack(&request, &ack);
+
+                                    println!("Request from {}:\n{}", addr, request);
+                                    println!("Answer to {}:\n{}", addr, answer);
+
+                                    match self.socket.start_send((addr, answer))? {
+                                        AsyncSink::Ready => continue,
+                                        AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                                    }
+                                },
+                                Err(error) => println!("Address assignment error: {}", error.to_string()),
+                            };
+                        } else {
+                            if request.client_ip_address.is_unspecified() {
+                                // the client is in INIT-REBOOT state
+                                /*
+                                RFC 2131 §4.3.2
+                                If the DHCP server has no record of this client, then it MUST
+                                remain silent, and MAY output a warning to the network administrator.
+                                */
+                                match self.storage.check(
+                                request.transaction_identifier,
+                                request.options.address_request,
+                                ) {
+                                    Ok(ack) => {
+                                        let answer = self.message_builder.dhcp_request_to_ack(&request, &ack);
+
+                                        println!("Request from {}:\n{}", addr, request);
+                                        println!("Answer to {}:\n{}", addr, answer);
+
+                                        addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255,255,255,255)), DHCP_PORT_CLIENT);
+                                        match self.socket.start_send((addr, answer))? {
+                                            AsyncSink::Ready => continue,
+                                            AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                                        }
+                                    },
+                                    Err(error) => println!("Address checking error: {}", error.to_string()),
+                                }
+                            } else {
+                                // the client is in RENEWING/REBINDING state
+                                match self.storage.renew(
+                                    request.transaction_identifier,
+                                    &request.client_ip_address,
+                                    request.options.address_time,
+                                ) {
+                                    Ok(ack) => {
+                                        let answer = self.message_builder.dhcp_request_to_ack(&request, &ack);
+
+                                        println!("Request from {}:\n{}", addr, request);
+                                        println!("Answer to {}:\n{}", addr, answer);
+
+                                        match self.socket.start_send((addr, answer))? {
+                                            AsyncSink::Ready => continue,
+                                            AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                                        }
+                                    },
+                                    Err(error) => println!("Address checking error: {}", error.to_string()),
+                                }
+                            }
+                        }
+                    },
+                    Some(DhcpMessageType::Decline) => {
+                        match self.storage.freeze(
+                            request.transaction_identifier,
+                            request.options.address_request,
+                        ) {
+                            Ok(_) => println!("Address {:?} has been marked as unavailable", request.options.address_request),
+                            Err(error) => println!("Address freezing error: {}", error.to_string()),
+                        };
+                    },
+                    Some(DhcpMessageType::Release) => {
+                        match self.storage.deallocate(
+                            request.transaction_identifier,
+                            request.options.address_request,
+                        ) {
+                            Ok(_) => println!("Address {:?} has been released", request.options.address_request),
+                            Err(error) => println!("Address releasing error: {}", error.to_string()),
+                        };
+                    },
+                    Some(DhcpMessageType::Inform) => {
+                        let answer = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
 
                         println!("Request from {}:\n{}", addr, request);
                         println!("Answer to {}:\n{}", addr, answer);
@@ -121,10 +241,6 @@ impl Future for Server {
                             AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
                         }
                     },
-                    Some(DhcpMessageType::Request) => {},
-                    Some(DhcpMessageType::Decline) => {},
-                    Some(DhcpMessageType::Release) => {},
-                    Some(DhcpMessageType::Inform) => {},
                     _ => {},
                 }
             }

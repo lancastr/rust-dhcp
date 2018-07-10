@@ -3,6 +3,7 @@ use std::net::{
     Ipv4Addr,
     SocketAddr,
 };
+
 use tokio::{
     io,
     prelude::*,
@@ -42,14 +43,14 @@ impl Client {
         client_id               : u32,
         client_hardware_address : MacAddress,
     ) -> io::Result<Self> {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), UDP_PORT_CLIENT);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_CLIENT);
         let socket = DhcpFramed::new(addr, false, false)?;
 
         let server_addr = SocketAddr::new(IpAddr::V4(if let Some(ip) = server_addr {
             ip
         } else {
             Ipv4Addr::new(255,255,255,255)
-        }), UDP_PORT_SERVER);
+        }), DHCP_PORT_SERVER);
 
         let message_builder = MessageBuilder::new(
             client_id,

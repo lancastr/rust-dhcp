@@ -10,27 +10,32 @@ const OFFER_TIMEOUT: u32 = 60;
 
 pub struct Lease {
     address             : u32,
+    lease_time          : u32,
+
     state               : State,
     offered_at          : u32,
     assigned_at         : u32,
+    renewed_at          : u32,
     released_at         : u32,
-
-    offer_expires_at    : u32,
     expires_at          : u32,
 }
 
 impl Lease {
-    pub fn new(address: u32) -> Self {
+    ///
+    /// Created in Offered state
+    ///
+    pub fn new(address: u32, lease_time: u32) -> Self {
         let offered_at = Utc::now().timestamp() as u32;
 
         Lease {
             address,
+            lease_time,
+
             state               : State::Offered,
             offered_at,
             assigned_at         : 0,
+            renewed_at          : 0,
             released_at         : 0,
-
-            offer_expires_at    : offered_at + OFFER_TIMEOUT,
             expires_at          : 0,
         }
     }
@@ -39,20 +44,39 @@ impl Lease {
         self.address
     }
 
-    pub fn assign(&mut self, lease_time: u32) {
-        match self.state {
-            State::Offered => {
-                self.state = State::Assigned;
-                self.assigned_at = Utc::now().timestamp() as u32;
+    pub fn lease_time(&self) -> u32 {
+        self.lease_time
+    }
 
-                self.offer_expires_at = 0;
-                self.expires_at = self.assigned_at + lease_time;
-            },
-            _ => {},
+    pub fn assign(&mut self) {
+        // possible only in Offered state
+        if !self.is_offered() {
+            return;
         }
+
+        self.state = State::Assigned;
+        self.assigned_at = Utc::now().timestamp() as u32;
+
+        self.expires_at = self.assigned_at + self.lease_time;
+    }
+
+    pub fn renew(&mut self, lease_time: u32) {
+        // possible only in Assigned state
+        if !self.is_assigned() {
+            return;
+        }
+
+        self.lease_time = lease_time;
+        self.renewed_at = Utc::now().timestamp() as u32;
+        self.expires_at = self.renewed_at + self.lease_time;
     }
 
     pub fn release(&mut self) {
+        // may be released only once
+        if !self.is_released() {
+            return;
+        }
+
         self.state = State::Released;
         self.released_at = Utc::now().timestamp() as u32;
     }
@@ -62,7 +86,11 @@ impl Lease {
     }
 
     pub fn expires_after(&self) -> u32 {
-        self.expires_at - (Utc::now().timestamp() as u32)
+        let current = Utc::now().timestamp() as u32;
+        if current > self.expires_at() {
+            return 0;
+        }
+        self.expires_at() - current
     }
 
     pub fn is_allocated(&self) -> bool {
@@ -95,10 +123,10 @@ impl Lease {
     }
 
     pub fn is_offer_expired(&self) -> bool {
-        if self.offer_expires_at == 0 {
+        if self.offered_at == 0 {
             return false;
         }
-        (Utc::now().timestamp() as u32) >= self.offer_expires_at
+        (Utc::now().timestamp() as u32) >= self.offered_at + OFFER_TIMEOUT
     }
 
     pub fn is_expired(&self) -> bool {

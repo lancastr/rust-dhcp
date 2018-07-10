@@ -2,12 +2,10 @@ use std::{
     io,
     mem,
 };
+
 use bytes::BufMut;
 
-use super::{
-    parser,
-    message::*,
-};
+use message::*;
 
 pub struct Codec;
 
@@ -17,10 +15,6 @@ impl Codec {
             Ok((_, message)) => message,
             Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidInput, error.to_string())),
         };
-
-        if !message.is_valid() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Validation error"));
-        }
 
         Ok(message)
     }
@@ -71,6 +65,16 @@ impl Codec {
             cursor.put_u8(OptionTag::DhcpMessageType as u8);
             cursor.put_u8(mem::size_of::<u8>() as u8);
             cursor.put_u8(value as u8);
+        }
+        if let Some(value) = message.options.dhcp_server_id {
+            cursor.put_u8(OptionTag::DhcpServerId as u8);
+            cursor.put_u8(mem::size_of::<u32>() as u8);
+            cursor.put_u32_be(u32::from(value));
+        }
+        if let Some(ref value) = message.options.dhcp_message {
+            cursor.put_u8(OptionTag::DhcpMessage as u8);
+            cursor.put_u8(value.len() as u8);
+            cursor.put(value);
         }
         cursor.put_u8(OptionTag::End as u8);
 

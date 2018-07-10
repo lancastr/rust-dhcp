@@ -3,6 +3,7 @@ use std::{
         Ipv4Addr,
     },
 };
+
 use eui48::{
     MacAddress,
     EUI48LEN,
@@ -11,13 +12,15 @@ use eui48::{
 use protocol::*;
 
 pub struct MessageBuilder {
+    // header section
     transaction_identifier      : u32,
     client_hardware_address     : MacAddress,
+
+    // options section
 }
 
 impl MessageBuilder {
-    pub fn new<
-    >(
+    pub fn new(
         transaction_identifier  : u32,
         client_hardware_address : MacAddress,
     ) -> Self {
@@ -27,8 +30,7 @@ impl MessageBuilder {
         }
     }
 
-    pub fn discover<
-    >(
+    pub fn discover(
         &self,
     ) -> Message {
         let options = Options{
@@ -42,7 +44,7 @@ impl MessageBuilder {
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Defined,
+            hardware_type               : HardwareType::Mac48,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 

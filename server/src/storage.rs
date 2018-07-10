@@ -5,8 +5,12 @@ use std::{
     net::Ipv4Addr,
 };
 
+use error::Error;
 use lease::Lease;
-use offer::Offer;
+use message::{
+    Offer,
+    Ack,
+};
 
 const DEFAULT_LEASE_TIME: u32       = 60 * 60 * 24; // 24 hours
 const MAX_LEASE_TIME: u32           = DEFAULT_LEASE_TIME * 7; // a week
@@ -16,6 +20,8 @@ pub struct Storage {
     dynamic_address_range   : Range<u32>,
     address_client_map      : HashMap<u32, u32>, // IPv4 -> client_id
     client_lease_map        : HashMap<u32, Lease>, // client_id -> Lease
+
+    frozen_addresses        : Vec<u32>, // reported by DHCPDECLINE
 }
 
 impl Storage {
@@ -40,6 +46,8 @@ impl Storage {
             dynamic_address_range,
             address_client_map      : HashMap::with_capacity(static_address_number + dynamic_address_number),
             client_lease_map        : HashMap::with_capacity(static_address_number + dynamic_address_number),
+
+            frozen_addresses        : Vec::with_capacity(64),
         }
     }
 
@@ -88,13 +96,15 @@ impl Storage {
     pub fn allocate(
         &mut self,
         client_id           : u32,
-        lease_time_opt      : Option<u32>,
+        lease_time          : Option<u32>,
         requested_address   : Option<Ipv4Addr>,
-    ) -> Result<Offer, String> {
+    ) -> Result<Offer, Error> {
         println!("Allocation sequence: started");
 
+        // for lease time case 1
+        let reuse_lease_time = lease_time.is_none();
         // lease time case 2 or 3
-        let lease_time = cmp::min(lease_time_opt.unwrap_or(DEFAULT_LEASE_TIME), MAX_LEASE_TIME);
+        let lease_time = cmp::min(lease_time.unwrap_or(DEFAULT_LEASE_TIME), MAX_LEASE_TIME);
 
         let requested_address = requested_address.map(|address| u32::from(address));
 
@@ -102,14 +112,14 @@ impl Storage {
         println!("Allocation sequence: checking for a client's current address");
         if let Some(address) = self.client_current_address(client_id) {
             // lease time case 1
-            let lease_time = self.offer(address, client_id, lease_time, lease_time_opt.is_none());
+            let lease_time = self.offer(address, client_id, lease_time, reuse_lease_time);
 
             let offer = Offer{
                 address: Ipv4Addr::from(address),
                 lease_time,
-                message: "Offering the client his current address".to_owned(),
+                message: "Offering the client the current address".to_owned(),
             };
-            println!("Allocation sequence: offering the client his current address: {:?}", offer);
+            println!("Allocation sequence: offering the client the current address: {:?}", offer);
             return Ok(offer);
         } else {
             println!("Allocation sequence: the client has no current address");
@@ -125,9 +135,9 @@ impl Storage {
                 let offer = Offer{
                     address: Ipv4Addr::from(address),
                     lease_time,
-                    message: "Offering the client his previous address".to_owned(),
+                    message: "Offering the client the previous address".to_owned(),
                 };
-                println!("Allocation sequence: offering the client his previous address {:?}", offer);
+                println!("Allocation sequence: offering the client the previous address {:?}", offer);
                 return Ok(offer);
             }
             println!("Allocation sequence: the previous address {} is not available", Ipv4Addr::from(address));
@@ -156,7 +166,7 @@ impl Storage {
 
         // address allocation case 4
         // giaddr stuff not implemented
-        let address = self.get_dynamic_available().ok_or("None available".to_owned())?;
+        let address = self.get_dynamic_available().ok_or(Error::DynamicPoolExhausted)?;
         let lease_time = self.offer(address, client_id, lease_time, false);
 
         let offer = Offer{
@@ -168,16 +178,106 @@ impl Storage {
         Ok(offer)
     }
 
-    pub fn release(
+    pub fn assign(
         &mut self,
-        address: &Ipv4Addr,
         client_id: u32,
-    ) {
+        address: Option<Ipv4Addr>,
+    ) -> Result<Ack, Error> {
+        let address = u32::from(address.ok_or(Error::InvalidInput)?.to_owned());
+
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(&client_id) {
+            if lease.is_offered() {
+                if lease.address() != address {
+                    return Err(Error::InvalidAddress);
+                }
+                lease.assign();
+                return Ok(Ack{
+                    address     : Ipv4Addr::from(lease.address()),
+                    lease_time  : lease.lease_time(),
+                    message     : "Successfully assigned".to_owned(),
+                });
+            } else {
+                if lease.is_offer_expired() {
+                    return Err(Error::OfferExpired);
+                } else {
+                    return Err(Error::AddressNotOffered);
+                }
+            }
+        }
+        Err(Error::OfferNotFound)
+    }
+
+    pub fn check(
+        &mut self,
+        client_id: u32,
+        address: Option<Ipv4Addr>,
+    ) -> Result<Ack, Error> {
+        let address = u32::from(address.ok_or(Error::InvalidInput)?.to_owned());
+
+        if let Some(ref lease) = self.client_lease_map.get(&client_id) {
+            if lease.address() == address {
+                return Ok(Ack{
+                    address     : Ipv4Addr::from(lease.address()),
+                    lease_time  : lease.lease_time(),
+                    message     : "Your lease is active".to_owned(),
+                });
+            } else {
+                return Err(Error::LeaseHasDifferentAddress);
+            }
+        }
+        Err(Error::LeaseNotFound)
+    }
+
+    pub fn renew(
+        &mut self,
+        client_id       : u32,
+        address         : &Ipv4Addr,
+        lease_time      : Option<u32>,
+    ) -> Result<Ack, Error> {
         let address = u32::from(address.to_owned());
+        let lease_time = cmp::min(lease_time.unwrap_or(DEFAULT_LEASE_TIME), MAX_LEASE_TIME);
+
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(&client_id) {
+            if lease.address() == address {
+                lease.renew(lease_time);
+                return Ok(Ack{
+                    address     : Ipv4Addr::from(lease.address()),
+                    lease_time  : lease.lease_time(),
+                    message     : "Your lease has been renewed".to_owned(),
+                });
+            } else {
+                return Err(Error::LeaseHasDifferentAddress);
+            }
+        }
+        Err(Error::LeaseNotFound)
+    }
+
+    pub fn deallocate(
+        &mut self,
+        client_id: u32,
+        address: Option<Ipv4Addr>,
+    ) -> Result<(), Error> {
+        let address = u32::from(address.ok_or(Error::InvalidInput)?.to_owned());
+
         self.address_client_map.remove(&address);
         if let Some(ref mut lease) = self.client_lease_map.get_mut(&client_id) {
             lease.release();
         }
+        Ok(())
+    }
+
+    pub fn freeze(
+        &mut self,
+        client_id: u32,
+        address: Option<Ipv4Addr>,
+    ) -> Result<(), Error> {
+        let address = u32::from(address.ok_or(Error::InvalidInput)?.to_owned());
+
+        self.address_client_map.remove(&address);
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(&client_id) {
+            lease.release();
+        }
+        Ok(())
     }
 
     fn offer(
@@ -195,7 +295,7 @@ impl Storage {
             }
         }
 
-        self.client_lease_map.insert(client_id, Lease::new(address));
+        self.client_lease_map.insert(client_id, Lease::new(address, lease_time));
         lease_time
     }
 
@@ -224,16 +324,22 @@ impl Storage {
         None
     }
 
-    fn is_in_static_pool(&self, address: u32) -> bool {
+    fn is_address_in_static_pool(&self, address: u32) -> bool {
         self.static_address_range.start <= address && address < self.static_address_range.end
     }
 
-    fn is_in_dynamic_pool(&self, address: u32) -> bool {
+    fn is_address_in_dynamic_pool(&self, address: u32) -> bool {
         self.dynamic_address_range.start <= address && address < self.dynamic_address_range.end
     }
 
+    fn is_address_frozen(&self, address: u32) -> bool {
+        self.frozen_addresses.contains(&address)
+    }
+
     fn is_address_available(&self, address: u32) -> bool {
-        (self.is_in_static_pool(address) || self.is_in_dynamic_pool(address)) && !self.is_address_leased(address)
+        (self.is_address_in_static_pool(address) || self.is_address_in_dynamic_pool(address))
+            && !self.is_address_leased(address)
+            && !self.is_address_frozen(address)
     }
 
     fn is_address_leased(&self, address: u32) -> bool {

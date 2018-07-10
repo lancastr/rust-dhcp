@@ -2,10 +2,13 @@ mod operation_code;
 mod hardware_type;
 mod options;
 
+pub mod parser;
+
 use std::{
     fmt,
     net::Ipv4Addr,
 };
+
 use eui48::{
     MacAddress,
     EUI48LEN,
@@ -33,7 +36,6 @@ pub use self::{
     constants::*,
 };
 
-#[allow(dead_code)]
 pub struct Message {
     pub operation_code              : OperationCode,
     pub hardware_type               : HardwareType,
@@ -56,7 +58,6 @@ pub struct Message {
     pub options                     : Options,
 }
 
-#[allow(dead_code)]
 impl Message {
     pub fn is_valid(&self) -> bool {
         match self.hardware_type {
@@ -96,7 +97,7 @@ impl fmt::Display for Message {
         writeln!(f, "Hardware address length    : {}", self.hardware_address_length)?;
         writeln!(f, "Hardware options           : {}", self.hardware_options)?;
 
-        writeln!(f, "Transaction identifier     : {}", self.transaction_identifier)?;
+        writeln!(f, "Transaction ID (client ID) : {}", self.transaction_identifier)?;
         writeln!(f, "Seconds                    : {}", self.seconds)?;
         writeln!(f, "Broadcast                  : {}", self.is_broadcast)?;
 
@@ -109,7 +110,6 @@ impl fmt::Display for Message {
         writeln!(f, "Server name                : {}", self.server_name)?;
         writeln!(f, "Boot filename              : {}", self.boot_filename)?;
 
-        writeln!(f, "Magic cookie               : 0x{:x?}", MAGIC_COOKIE)?;
         writeln!(f, "Options                    : {:?}", self.options)?;
 
         Ok(())

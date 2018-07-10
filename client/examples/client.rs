@@ -4,7 +4,8 @@ extern crate rand;
 
 extern crate client;
 
-use std::net::Ipv4Addr;
+//use std::net::Ipv4Addr;
+
 use eui48::MacAddress;
 use tokio::prelude::*;
 

@@ -14,6 +14,6 @@ pub struct Options {
     pub address_time                : Option<u32>,
 
     pub dhcp_message_type           : Option<DhcpMessageType>,
-    pub dhcp_server_id              : Option<u32>,
+    pub dhcp_server_id              : Option<Ipv4Addr>,
     pub dhcp_message                : Option<String>,
 }

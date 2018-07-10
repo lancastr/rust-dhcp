@@ -1,11 +1,13 @@
 use std::net::Ipv4Addr;
+
 use nom::*;
 use eui48::{
     MacAddress,
     EUI48LEN,
 };
 
-use super::message::*;
+use super::*;
+use super::OptionTag::*;
 
 named!(pub parse_message<&[u8], Message>,
     do_parse!(
@@ -28,12 +30,12 @@ named!(pub parse_message<&[u8], Message>,
         boot_filename               : map!(take!(SIZE_BOOT_FILENAME), |v| String::from_utf8_lossy(v).to_string()) >>
 
                                       tag!(MAGIC_COOKIE) >>
-        subnet_mask                 : opt!(preceded!(tag!(&[OptionTag::SubnetMask as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
-        address_request             : opt!(preceded!(tag!(&[OptionTag::AddressRequest as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
-        address_time                : opt!(preceded!(tag!(&[OptionTag::AddressTime as u8, 4u8]), be_u32)) >>
-        dhcp_message_type           : opt!(preceded!(tag!(&[OptionTag::DhcpMessageType as u8, 1u8]), map!(be_u8, |v| v.into()))) >>
-        dhcp_server_id              : opt!(preceded!(tag!(&[OptionTag::DhcpServerId as u8, 4u8]), be_u32)) >>
-        dhcp_message                : opt!(preceded!(tag!(&[OptionTag::DhcpServerId as u8]), map!(length_bytes!(be_u8), |v| String::from_utf8_lossy(v).to_string()))) >>
+        subnet_mask                 : opt!(preceded!(tag!(&[SubnetMask as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+        address_request             : opt!(preceded!(tag!(&[AddressRequest as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+        address_time                : opt!(preceded!(tag!(&[AddressTime as u8, 4u8]), be_u32)) >>
+        dhcp_message_type           : opt!(preceded!(tag!(&[DhcpMessageType as u8, 1u8]), map!(be_u8, |v| v.into()))) >>
+        dhcp_server_id              : opt!(preceded!(tag!(&[DhcpServerId as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+        dhcp_message                : opt!(preceded!(tag!(&[DhcpMessage as u8]), map!(length_bytes!(be_u8), |v| String::from_utf8_lossy(v).to_string()))) >>
                                       tag!(&[OptionTag::End as u8]) >>
 
         (Message{

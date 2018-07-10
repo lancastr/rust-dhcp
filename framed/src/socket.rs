@@ -1,7 +1,15 @@
 use std::{
     net::SocketAddr,
 };
-use futures::{Async, AsyncSink, Poll, Sink, StartSend, Stream};
+
+use futures::{
+    Async,
+    AsyncSink,
+    Poll,
+    Sink,
+    StartSend,
+    Stream,
+};
 use tokio::{
     io,
     net::UdpSocket,
