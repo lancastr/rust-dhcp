@@ -9,6 +9,10 @@ use eui48::{
 use super::*;
 use super::OptionTag::*;
 
+const U8_LEN: u8    = 1u8;
+const U16_LEN: u8   = 2u8;
+const U32_LEN: u8   = 4u8;
+
 named!(pub parse_message<&[u8], Message>,
     do_parse!(
         operation_code              : map!(be_u8, |v| v.into()) >>
@@ -30,12 +34,16 @@ named!(pub parse_message<&[u8], Message>,
         boot_filename               : map!(take!(SIZE_BOOT_FILENAME), |v| String::from_utf8_lossy(v).to_string()) >>
 
                                       tag!(MAGIC_COOKIE) >>
-        subnet_mask                 : opt!(preceded!(tag!(&[SubnetMask as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
-        address_request             : opt!(preceded!(tag!(&[AddressRequest as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
-        address_time                : opt!(preceded!(tag!(&[AddressTime as u8, 4u8]), be_u32)) >>
-        dhcp_message_type           : opt!(preceded!(tag!(&[DhcpMessageType as u8, 1u8]), map!(be_u8, |v| v.into()))) >>
-        dhcp_server_id              : opt!(preceded!(tag!(&[DhcpServerId as u8, 4u8]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+        subnet_mask                 : opt!(preceded!(tag!(&[SubnetMask as u8, U32_LEN]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+
+        address_request             : opt!(preceded!(tag!(&[AddressRequest as u8, U32_LEN]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+        address_time                : opt!(preceded!(tag!(&[AddressTime as u8, U32_LEN]), be_u32)) >>
+        overload                    : opt!(preceded!(tag!(&[Overload as u8, U8_LEN]), be_u8)) >>
+        dhcp_message_type           : opt!(preceded!(tag!(&[DhcpMessageType as u8, U8_LEN]), map!(be_u8, |v| v.into()))) >>
+        dhcp_server_id              : opt!(preceded!(tag!(&[DhcpServerId as u8, U32_LEN]), map!(be_u32, |v| Ipv4Addr::from(v)))) >>
+        parameter_list              : opt!(preceded!(tag!(&[ParameterList as u8]), map!(length_bytes!(be_u8), |v| String::from_utf8_lossy(v).to_string()))) >>
         dhcp_message                : opt!(preceded!(tag!(&[DhcpMessage as u8]), map!(length_bytes!(be_u8), |v| String::from_utf8_lossy(v).to_string()))) >>
+        dhcp_max_message_size       : opt!(preceded!(tag!(&[DhcpMaxMessageSize as u8, U16_LEN]), be_u16)) >>
                                       tag!(&[OptionTag::End as u8]) >>
 
         (Message{
@@ -59,11 +67,15 @@ named!(pub parse_message<&[u8], Message>,
 
             options: Options{
                 subnet_mask,
+
                 address_request,
                 address_time,
+                overload,
                 dhcp_message_type,
                 dhcp_server_id,
+                parameter_list,
                 dhcp_message,
+                dhcp_max_message_size,
             },
         })
     )

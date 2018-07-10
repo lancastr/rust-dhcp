@@ -32,11 +32,11 @@ pub struct Client {
 }
 
 impl Client {
-    ///
-    /// server_addr:
-    ///     Some(ip) if you know the DHCP server address
-    ///     None to use broadcast
-    ///
+    //
+    // server_addr:
+    //     Some(ip) if you know the DHCP server address
+    //     None to use broadcast
+    //
     pub fn new(
         server_addr             : Option<Ipv4Addr>,
 

@@ -20,10 +20,11 @@ pub struct Lease {
     expires_at          : u32,
 }
 
+#[allow(dead_code)]
 impl Lease {
-    ///
-    /// Created in Offered state
-    ///
+    //
+    // Created in Offered state
+    //
     pub fn new(address: u32, lease_time: u32) -> Self {
         let offered_at = Utc::now().timestamp() as u32;
 
@@ -87,10 +88,10 @@ impl Lease {
 
     pub fn expires_after(&self) -> u32 {
         let current = Utc::now().timestamp() as u32;
-        if current > self.expires_at() {
+        if current > self.expires_at {
             return 0;
         }
-        self.expires_at() - current
+        self.expires_at - current
     }
 
     pub fn is_allocated(&self) -> bool {

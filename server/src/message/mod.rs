@@ -14,6 +14,7 @@ pub use self::{
     ack::Ack,
 };
 
+#[allow(dead_code)]
 pub struct MessageBuilder {
     // header section
     server_ip_address       : Ipv4Addr,
@@ -46,14 +47,12 @@ impl MessageBuilder {
         discover  : &Message,
         offer     : &Offer,
     ) -> Message {
-        let options = Options {
-            subnet_mask         : Some(self.subnet_mask),
-            address_request     : None,
-            address_time        : Some(offer.lease_time),
-            dhcp_message_type   : Some(DhcpMessageType::Offer),
-            dhcp_server_id      : Some(self.server_ip_address),
-            dhcp_message        : Some(offer.message.to_owned()),
-        };
+        let mut options= Options::new();
+        options.subnet_mask             = Some(self.subnet_mask);
+        options.address_time            = Some(offer.lease_time);
+        options.dhcp_message_type       = Some(DhcpMessageType::DhcpOffer);
+        options.dhcp_server_id          = Some(self.server_ip_address);
+        options.dhcp_message            = Some(offer.message.to_owned());
 
         Message {
             operation_code              : OperationCode::BootReply,
@@ -83,14 +82,12 @@ impl MessageBuilder {
         request     : &Message,
         ack         : &Ack,
     ) -> Message {
-        let options = Options {
-            subnet_mask         : Some(self.subnet_mask),
-            address_request     : None,
-            address_time        : Some(ack.lease_time),
-            dhcp_message_type   : Some(DhcpMessageType::Ack),
-            dhcp_server_id      : Some(self.server_ip_address),
-            dhcp_message        : Some(ack.message.to_owned()),
-        };
+        let mut options= Options::new();
+        options.subnet_mask             = Some(self.subnet_mask);
+        options.address_time            = Some(ack.lease_time);
+        options.dhcp_message_type       = Some(DhcpMessageType::DhcpAck);
+        options.dhcp_server_id          = Some(self.server_ip_address);
+        options.dhcp_message            = Some(ack.message.to_owned());
 
         Message {
             operation_code              : OperationCode::BootReply,
@@ -120,14 +117,10 @@ impl MessageBuilder {
         request : &Message,
         message : &str,
     ) -> Message {
-        let options = Options {
-            subnet_mask         : None,
-            address_request     : None,
-            address_time        : None,
-            dhcp_message_type   : Some(DhcpMessageType::Nak),
-            dhcp_server_id      : Some(self.server_ip_address),
-            dhcp_message        : Some(message.to_owned()),
-        };
+        let mut options= Options::new();
+        options.dhcp_message_type       = Some(DhcpMessageType::DhcpNak);
+        options.dhcp_server_id          = Some(self.server_ip_address);
+        options.dhcp_message            = Some(message.to_owned());
 
         Message {
             operation_code              : OperationCode::BootReply,
@@ -157,14 +150,11 @@ impl MessageBuilder {
         inform  : &Message,
         message : &str,
     ) -> Message {
-        let options = Options {
-            subnet_mask         : Some(self.subnet_mask),
-            address_request     : None,
-            address_time        : None,
-            dhcp_message_type   : Some(DhcpMessageType::Ack),
-            dhcp_server_id      : Some(self.server_ip_address),
-            dhcp_message        : Some(message.to_owned()),
-        };
+        let mut options= Options::new();
+        options.subnet_mask             = Some(self.subnet_mask);
+        options.dhcp_message_type       = Some(DhcpMessageType::DhcpAck);
+        options.dhcp_server_id          = Some(self.server_ip_address);
+        options.dhcp_message            = Some(message.to_owned());
 
         Message {
             operation_code              : OperationCode::BootReply,

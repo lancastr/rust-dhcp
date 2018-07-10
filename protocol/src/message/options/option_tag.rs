@@ -29,6 +29,7 @@ pub enum OptionTag {
     DhcpServerId,
     ParameterList,
     DhcpMessage,
+    DhcpMaxMessageSize,
 
     End,
 }
@@ -64,6 +65,7 @@ impl From<u8> for OptionTag {
             54 => DhcpServerId,
             55 => ParameterList,
             56 => DhcpMessage,
+            57 => DhcpMaxMessageSize,
 
             255 => End,
             _ => Pad,

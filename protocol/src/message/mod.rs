@@ -60,27 +60,65 @@ pub struct Message {
 
 impl Message {
     pub fn is_valid(&self) -> bool {
-        match self.hardware_type {
-            HardwareType::Undefined => return false,
-            _ => (),
-        }
-
-        if self.hardware_address_length != EUI48LEN as u8 {
+        if let HardwareType::Undefined = self.hardware_type { return false }
+        if self.hardware_address_length != EUI48LEN as u8
+        || self.hardware_options != 0u8
+        || self.seconds != 0u16
+        {
             return false;
         }
 
         match self.options.dhcp_message_type {
-            None => return false,
-            Some(DhcpMessageType::Discover) => {
-                match self.operation_code {
-                    OperationCode::BootRequest => (),
-                    _ => return false,
+            // client generated packets section
+            Some(DhcpMessageType::DhcpDiscover) => {
+                if let OperationCode::BootRequest = self.operation_code {} else { return false }
+            },
+
+            // server generated packets section
+            Some(DhcpMessageType::DhcpOffer) => {
+                if let OperationCode::BootReply = self.operation_code {} else { return false }
+                if self.transaction_identifier == 0
+                || !self.client_ip_address.is_unspecified()
+                || self.your_ip_address.is_unspecified()
+                || self.server_ip_address.is_unspecified()
+
+                || self.options.address_request.is_some()
+                || self.options.address_time.is_none()
+                || self.options.dhcp_server_id.is_none()
+                || self.options.parameter_list.is_some()
+                || self.options.dhcp_max_message_size.is_some()
+                {
+                    return false;
                 }
             },
-            Some(DhcpMessageType::Offer) => {
-                match self.operation_code {
-                    OperationCode::BootReply => (),
-                    _ => return false,
+            Some(DhcpMessageType::DhcpAck) => {
+                if let OperationCode::BootReply = self.operation_code {} else { return false }
+                if self.transaction_identifier == 0
+                || self.your_ip_address.is_unspecified()
+                || self.server_ip_address.is_unspecified()
+
+                || self.options.address_request.is_some()
+                || self.options.dhcp_server_id.is_none()
+                || self.options.parameter_list.is_some()
+                || self.options.dhcp_max_message_size.is_some()
+                {
+                    return false;
+                }
+            },
+            Some(DhcpMessageType::DhcpNak) => {
+                if let OperationCode::BootReply = self.operation_code {} else { return false }
+                if self.transaction_identifier == 0
+                || !self.client_ip_address.is_unspecified()
+                || !self.your_ip_address.is_unspecified()
+                || !self.server_ip_address.is_unspecified()
+
+                || self.options.address_request.is_some()
+                || self.options.address_time.is_some()
+                || self.options.dhcp_server_id.is_none()
+                || self.options.parameter_list.is_some()
+                || self.options.dhcp_max_message_size.is_some()
+                {
+                    return false;
                 }
             },
             _ => return false,

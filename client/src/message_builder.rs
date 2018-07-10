@@ -33,14 +33,9 @@ impl MessageBuilder {
     pub fn discover(
         &self,
     ) -> Message {
-        let options = Options{
-            subnet_mask         : None,
-            address_request     : None,
-            address_time        : Some(1000000),
-            dhcp_message_type   : Some(DhcpMessageType::Discover),
-            dhcp_server_id      : None,
-            dhcp_message        : None,
-        };
+        let mut options= Options::new();
+        options.address_time            = Some(1000000);
+        options.dhcp_message_type       = Some(DhcpMessageType::DhcpDiscover);
 
         Message {
             operation_code              : OperationCode::BootRequest,
