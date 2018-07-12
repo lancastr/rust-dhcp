@@ -1,7 +1,9 @@
 #[derive(Fail, Debug)]
 pub enum Error {
-    #[fail(display = "Invalid input")]
-    InvalidInput,
+    #[fail(display = "The client must set its ID")]
+    ClientIdNotSpecified,
+    #[fail(display = "The client must set the requested address")]
+    AddressNotSpecified,
     #[fail(display = "Invalid address")]
     InvalidAddress,
     #[fail(display = "The dynamic pool has been exhausted")]

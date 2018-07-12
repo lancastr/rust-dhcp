@@ -1,6 +1,7 @@
 mod client;
-mod message_builder;
+mod message;
 
+#[macro_use] extern crate log;
 extern crate tokio;
 #[macro_use] extern crate futures;
 extern crate bytes;

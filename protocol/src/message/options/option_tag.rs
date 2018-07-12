@@ -1,8 +1,12 @@
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum OptionTag {
-    // RFC2132
     Pad = 0,
+
+    /*
+    RFC 2132
+    */
+    // RFC 1497 Vendor Extensions (RFC 2132 §3)
     SubnetMask,
     TimeOffset,
     Router,
@@ -21,8 +25,44 @@ pub enum OptionTag {
     SwapServer,
     RootPath,
     ExtensionsPath,
-
-    AddressRequest = 50,
+    // IP Layer Parameters per Host (RFC 2132 §4)
+    ForwardOnOff,
+    NonLocalSourceRouteOnOff,
+    PolicyFilter,
+    MaxDatagramReassemblySize,
+    DefaultIpTtl,
+    MtuTimeout,
+    MtuPlateau,
+    // IP Layer Parameters per Interface (RFC 2132 §5)
+    MtuInterface,
+    MtuSubnet,
+    BroadcastAddress,
+    MaskRecovery,
+    MaskSupplier,
+    PerformRouterDiscovery,
+    RouterSolicitationAddress,
+    StaticRoute,
+    // Link Layer Parameters per Interface (RFC 2132 §6)
+    TrailerEncapsulation,
+    ArpTimeout,
+    EthernetEncapsulation,
+    // TCP Default TTL Option (RFC 2132 §7)
+    DefaultTcpTtl,
+    KeepaliveTime,
+    KeepaliveData,
+    // Application and Service Parameters (RFC 2132 §8)
+    NisDomain,
+    NisServers,
+    NtpServers,
+    VendorSpecific,
+    NetbiosNameServer,
+    NetbiosDistributionServer,
+    NetbiosNodeType,
+    NetbiosScope,
+    XWindowFont,
+    XWindowManager,
+    // DHCP Extensions (RFC 2132 §9)
+    AddressRequest,
     AddressTime,
     Overload,
     DhcpMessageType,
@@ -30,8 +70,28 @@ pub enum OptionTag {
     ParameterList,
     DhcpMessage,
     DhcpMaxMessageSize,
+    RenewalTime,
+    RebindingTime,
+    ClassId,
+    ClientId,
+    // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
+    // skipping RFC 2242 code 63 (NetWare/IP sub Options)
+    // Application and Service Parameters (RFC 2132 §8) (continuation)
+    NisDomainName,
+    NisServerAddress,
+    ServerName,
+    BootfileName,
+    HomeAgentAddresses,
+    SmtpServers,
+    Pop3Servers,
+    NntpServers,
+    WwwServers,
+    FingerServers,
+    IrcServers,
+    StreetTalkServers,
+    StdaServers,
 
-    End,
+    End = 255,
 }
 
 impl From<u8> for OptionTag {
@@ -57,7 +117,37 @@ impl From<u8> for OptionTag {
             16 => SwapServer,
             17 => RootPath,
             18 => ExtensionsPath,
-
+            19 => ForwardOnOff,
+            20 => NonLocalSourceRouteOnOff,
+            21 => PolicyFilter,
+            22 => MaxDatagramReassemblySize,
+            23 => DefaultIpTtl,
+            24 => MtuTimeout,
+            25 => MtuPlateau,
+            26 => MtuInterface,
+            27 => MtuSubnet,
+            28 => BroadcastAddress,
+            29 => MaskRecovery,
+            30 => MaskSupplier,
+            31 => PerformRouterDiscovery,
+            32 => RouterSolicitationAddress,
+            33 => StaticRoute,
+            34 => TrailerEncapsulation,
+            35 => ArpTimeout,
+            36 => EthernetEncapsulation,
+            37 => DefaultTcpTtl,
+            38 => KeepaliveTime,
+            39 => KeepaliveData,
+            40 => NisDomain,
+            41 => NisServers,
+            42 => NtpServers,
+            43 => VendorSpecific,
+            44 => NetbiosNameServer,
+            45 => NetbiosDistributionServer,
+            46 => NetbiosNodeType,
+            47 => NetbiosScope,
+            48 => XWindowFont,
+            49 => XWindowManager,
             50 => AddressRequest,
             51 => AddressTime,
             52 => Overload,
@@ -66,6 +156,25 @@ impl From<u8> for OptionTag {
             55 => ParameterList,
             56 => DhcpMessage,
             57 => DhcpMaxMessageSize,
+            58 => RenewalTime,
+            59 => RebindingTime,
+            60 => ClassId,
+            61 => ClientId,
+            // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
+            // skipping RFC 2242 code 63 (NetWare/IP sub Options)
+            64 => NisDomainName,
+            65 => NisServerAddress,
+            66 => ServerName,
+            67 => BootfileName,
+            68 => HomeAgentAddresses,
+            69 => SmtpServers,
+            70 => Pop3Servers,
+            71 => NntpServers,
+            72 => WwwServers,
+            73 => FingerServers,
+            74 => IrcServers,
+            75 => StreetTalkServers,
+            76 => StdaServers,
 
             255 => End,
             _ => Pad,

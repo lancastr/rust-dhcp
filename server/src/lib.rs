@@ -1,9 +1,9 @@
 mod server;
-mod error;
 mod message;
 mod storage;
 mod lease;
 
+#[macro_use] extern crate log;
 extern crate tokio;
 #[macro_use] extern crate futures;
 extern crate bytes;

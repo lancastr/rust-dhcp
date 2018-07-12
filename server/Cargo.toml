@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
 
 [dependencies]
+log = "0.4.3"
 tokio = "0.1.7"
 futures = "0.1.21"
 bytes = "0.4.8"
@@ -11,6 +12,8 @@ eui48 = "0.3.2"
 hostname = "0.1.5"
 chrono = "0.4.4"
 failure = "0.1.1"
-
 protocol = { path = "../protocol" }
 framed = { path = "../framed" }
+
+[dev-dependencies]
+env_logger = "0.5.10"

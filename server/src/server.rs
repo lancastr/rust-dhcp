@@ -15,8 +15,10 @@ use hostname;
 
 use protocol::*;
 use framed::*;
-use error::Error;
-use message::MessageBuilder;
+use message::{
+    MessageBuilder,
+    Error,
+};
 use storage::Storage;
 
 pub struct Server {
@@ -31,28 +33,33 @@ impl Server {
     //     Some(string) if you want to specify the server name manually
     //     None to get the hostname automatically
     //
-    // dynamic_address_range:
-    //     is not inclusive yet, but may become so later
+    // *_address_range:
+    //     are not inclusive yet, but may become so later
     //
     pub fn new(
+        // header fields for the message builder
         server_ip_address       : Ipv4Addr,
-        gateway_ip_address      : Ipv4Addr,
         server_name             : Option<String>,
 
+        // address ranges for the storage
         static_address_range    : Range<Ipv4Addr>,
         dynamic_address_range   : Range<Ipv4Addr>,
 
+        // option fields for the message builder
         subnet_mask             : Ipv4Addr,
+        domain_name_servers     : Vec<Ipv4Addr>,
+        static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
     ) -> Result<Self, io::Error> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
 
         let message_builder = MessageBuilder::new(
             server_ip_address,
-            gateway_ip_address,
             server_name.unwrap_or(hostname::get_hostname().unwrap_or_default()),
 
             subnet_mask,
+            domain_name_servers,
+            static_routes,
         );
 
         let storage = Storage::new(
@@ -74,15 +81,13 @@ impl Future for Server {
 
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            match self.socket.poll_complete()? {
-                Async::Ready(_) => {},
-                Async::NotReady => return Ok(Async::NotReady),
-            }
+            if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
 
             if let Some((mut addr, request)) = try_ready!(self.socket.poll()) {
                 // report and drop invalid messages
+                info!("Request from {}:\n{}", addr, request);
                 if !request.is_valid() {
-                    println!("Invalid message from {}:\n{}", addr, request);
+                    warn!("The request is invalid");
                     continue;
                 }
 
@@ -114,27 +119,30 @@ impl Future for Server {
                 }
 
                 match request.options.dhcp_message_type {
-                    Some(DhcpMessageType::DhcpDiscover) => {
+                    Some(MessageType::DhcpDiscover) => {
+                        /*
+                        RFC 2131 §4.3.1
+                        When a server receives a DHCPDISCOVER message from a client, the
+                        server chooses a network address for the requesting client.  If no
+                        address is available, the server may choose to report the problem to
+                        the system administrator.
+                        */
                         match self.storage.allocate(
-                            request.transaction_identifier,
+                            request.options.client_id.to_owned(),
                             request.options.address_time,
                             request.options.address_request,
                         ) {
                             Ok(offer) => {
                                 let response = self.message_builder.dhcp_discover_to_offer(&request, &offer);
-
-                                println!("Request from {}:\n{}", addr, request);
-                                println!("Response to {}:\n{}", addr, response);
-
-                                match self.socket.start_send((addr, response))? {
-                                    AsyncSink::Ready => continue,
-                                    AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                                info!("Response to {}:\n{}", addr, response);
+                                if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                                    panic!("Must wait for poll_complete before");
                                 }
                             },
-                            Err(error) => println!("Address allocation error: {}", error.to_string()),
+                            Err(error) => warn!("Address allocation error: {}", error.to_string()),
                         };
                     },
-                    Some(DhcpMessageType::DhcpRequest) => {
+                    Some(MessageType::DhcpRequest) => {
                         /*
                         RFC 2131 §4.3.2
                         A DHCPREQUEST message may come from a client responding to a
@@ -144,114 +152,140 @@ impl Future for Server {
                         identifier' option, the message is in response to a DHCPOFFER
                         message.  Otherwise, the message is a request to verify or extend an
                         existing lease.
+
+                        RFC 2131 §4.3.6 (table 4)
+                        ---------------------------------------------------------------------
+                        |              |INIT-REBOOT  |SELECTING    |RENEWING     |REBINDING |
+                        ---------------------------------------------------------------------
+                        |broad/unicast |broadcast    |broadcast    |unicast      |broadcast |
+                        |server-ip     |MUST NOT     |MUST         |MUST NOT     |MUST NOT  |
+                        |requested-ip  |MUST         |MUST         |MUST NOT     |MUST NOT  |
+                        |ciaddr        |zero         |zero         |IP address   |IP address|
+                        ---------------------------------------------------------------------
+
+                        Note: server-ip     = request.options.dhcp_server_id
+                              ciaddr        = request.client_ip_address
+                              requested-ip  = request.options.address_request
                         */
+
+                        // the client is in SELECTING state
                         if request.options.dhcp_server_id.is_some() {
-                            // the client is in SELECTING state
                             match self.storage.assign(
-                                request.transaction_identifier,
+                                request.options.client_id.to_owned(),
                                 request.options.address_request,
                             ) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-
-                                    println!("Request from {}:\n{}", addr, request);
-                                    println!("Response to {}:\n{}", addr, response);
-
-                                    match self.socket.start_send((addr, response))? {
-                                        AsyncSink::Ready => continue,
-                                        AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                                    info!("Response to {}:\n{}", addr, response);
+                                    if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                                        panic!("Must wait for poll_complete before");
                                     }
                                 },
-                                Err(error) => println!("Address assignment error: {}", error.to_string()),
+                                Err(error) => {
+                                    warn!("Address assignment error: {}", error.to_string());
+                                    let response = self.message_builder.dhcp_request_to_nak(&request, &error);
+                                    info!("Response to {}:\n{}", addr, response);
+                                    if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                                        panic!("Must wait for poll_complete before");
+                                    }
+                                },
                             };
-                        } else {
-                            if request.client_ip_address.is_unspecified() {
-                                // the client is in INIT-REBOOT state
-                                match self.storage.check(
-                                request.transaction_identifier,
-                                request.options.address_request,
-                                ) {
-                                    Ok(ack) => {
-                                        let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
+                            continue;
+                        }
 
-                                        println!("Request from {}:\n{}", addr, request);
-                                        println!("Response to {}:\n{}", addr, response);
-
-                                        match self.socket.start_send((addr, response))? {
-                                            AsyncSink::Ready => continue,
-                                            AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                        // the client is in INIT-REBOOT state
+                        if request.client_ip_address.is_unspecified() {
+                            match self.storage.check(
+                                request.options.client_id.to_owned(),
+                            request.options.address_request,
+                            ) {
+                                Ok(ack) => {
+                                    let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
+                                    info!("Response to {}:\n{}", addr, response);
+                                    if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                                        panic!("Must wait for poll_complete before");
+                                    }
+                                },
+                                Err(error) => {
+                                    warn!("Address checking error: {}", error.to_string());
+                                    if let Error::LeaseHasDifferentAddress = error {
+                                        let response = self.message_builder.dhcp_request_to_nak(&request, &error);
+                                        info!("Response to {}:\n{}", addr, response);
+                                        if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                                            panic!("Must wait for poll_complete before");
                                         }
-                                    },
+                                    }
                                     /*
                                     RFC 2131 §4.3.2
                                     If the DHCP server has no record of this client, then it MUST
                                     remain silent, and MAY output a warning to the network administrator.
                                     */
-                                    Err(error) => match error {
-                                        Error::LeaseHasDifferentAddress => {
-                                            let response = self.message_builder.dhcp_request_to_nak(&request, &error.to_string());
-
-                                            println!("Request from {}:\n{}", addr, request);
-                                            println!("Response to {}:\n{}", addr, response);
-
-                                            match self.socket.start_send((addr, response))? {
-                                                AsyncSink::Ready => continue,
-                                                AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
-                                            }
-                                        }
-                                        _ => println!("Address checking error: {}", error.to_string()),
-                                    },
-                                }
-                            } else {
-                                // the client is in RENEWING or REBINDING state
-                                match self.storage.renew(
-                                    request.transaction_identifier,
-                                    &request.client_ip_address,
-                                    request.options.address_time,
-                                ) {
-                                    Ok(ack) => {
-                                        let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-
-                                        println!("Request from {}:\n{}", addr, request);
-                                        println!("Response to {}:\n{}", addr, response);
-
-                                        match self.socket.start_send((addr, response))? {
-                                            AsyncSink::Ready => continue,
-                                            AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
-                                        }
-                                    },
-                                    Err(error) => println!("Address checking error: {}", error.to_string()),
-                                }
+                                },
                             }
+                            continue;
+                        }
+
+                        // the client is in RENEWING or REBINDING state
+                        match self.storage.renew(
+                            request.options.client_id.to_owned(),
+                            &request.client_ip_address,
+                            request.options.address_time,
+                        ) {
+                            Ok(ack) => {
+                                let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
+                                info!("Response to {}:\n{}", addr, response);
+                                if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                                    panic!("Must wait for poll_complete before");
+                                }
+                            },
+                            Err(error) => warn!("Address checking error: {}", error.to_string()),
                         }
                     },
-                    Some(DhcpMessageType::DhcpDecline) => {
+                    Some(MessageType::DhcpDecline) => {
+                        /*
+                        RFC 2131 §4.3.3
+                        If the server receives a DHCPDECLINE message, the client has
+                        discovered through some other means that the suggested network
+                        address is already in use.  The server MUST mark the network address
+                        as not available and SHOULD notify the local system administrator of
+                        a possible configuration problem.
+                        */
                         match self.storage.freeze(
-                            request.transaction_identifier,
+                            request.options.client_id.to_owned(),
                             request.options.address_request,
                         ) {
-                            Ok(_) => println!("Address {:?} has been marked as unavailable", request.options.address_request),
-                            Err(error) => println!("Address freezing error: {}", error.to_string()),
+                            Ok(_) => info!("Address {:?} has been marked as unavailable", request.options.address_request),
+                            Err(error) => warn!("Address freezing error: {}", error.to_string()),
                         };
                     },
-                    Some(DhcpMessageType::DhcpRelease) => {
+                    Some(MessageType::DhcpRelease) => {
+                        /*
+                        RFC 2131 §4.3.4
+                        Upon receipt of a DHCPRELEASE message, the server marks the network
+                        address as not allocated.  The server SHOULD retain a record of the
+                        client's initialization parameters for possible reuse in response to
+                        subsequent requests from the client.
+                        */
                         match self.storage.deallocate(
-                            request.transaction_identifier,
+                            request.options.client_id.to_owned(),
                             request.options.address_request,
                         ) {
-                            Ok(_) => println!("Address {:?} has been released", request.options.address_request),
-                            Err(error) => println!("Address releasing error: {}", error.to_string()),
+                            Ok(_) => info!("Address {:?} has been released", request.options.address_request),
+                            Err(error) => warn!("Address releasing error: {}", error.to_string()),
                         };
                     },
-                    Some(DhcpMessageType::DhcpInform) => {
+                    Some(MessageType::DhcpInform) => {
+                        /*
+                        RFC 2131 §4.3.5
+                        The server responds to a DHCPINFORM message by sending a DHCPACK
+                        message directly to the address given in the 'ciaddr' field of the
+                        DHCPINFORM message.  The server MUST NOT send a lease expiration time
+                        to the client and SHOULD NOT fill in 'yiaddr'.
+                        */
                         let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
-
-                        println!("Request from {}:\n{}", addr, request);
-                        println!("Response to {}:\n{}", addr, response);
-
-                        match self.socket.start_send((addr, response))? {
-                            AsyncSink::Ready => continue,
-                            AsyncSink::NotReady(_) => panic!("Must wait for poll_complete before"),
+                        info!("Response to {}:\n{}", addr, response);
+                        if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
+                            panic!("Must wait for poll_complete before");
                         }
                     },
                     _ => {},

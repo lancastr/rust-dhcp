@@ -6,7 +6,7 @@ enum State {
     Released,
 }
 
-const OFFER_TIMEOUT: u32 = 60;
+const OFFER_TIMEOUT: u32 = 10;
 
 pub struct Lease {
     address             : u32,
@@ -103,24 +103,15 @@ impl Lease {
     }
 
     pub fn is_offered(&self) -> bool {
-        match self.state {
-            State::Offered => !self.is_offer_expired(),
-            _ => false,
-        }
+        if let State::Offered = self.state { true } else { false }
     }
 
     pub fn is_assigned(&self) -> bool {
-        match self.state {
-            State::Assigned => !self.is_expired(),
-            _ => false,
-        }
+        if let State::Assigned = self.state { true } else { false }
     }
 
     pub fn is_released(&self) -> bool {
-        match self.state {
-            State::Released => true,
-            _ => false,
-        }
+        if let State::Released = self.state { true } else { false }
     }
 
     pub fn is_offer_expired(&self) -> bool {

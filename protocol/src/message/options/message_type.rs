@@ -1,8 +1,8 @@
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
-pub enum DhcpMessageType {
+pub enum MessageType {
     Undefined = 0,
-    // RFC2132
+    // RFC 2132
     DhcpDiscover,
     DhcpOffer,
     DhcpRequest,
@@ -11,25 +11,25 @@ pub enum DhcpMessageType {
     DhcpNak,
     DhcpRelease,
     DhcpInform,
-    // RFC3203 (not implemented)
+    // RFC 3203 (not implemented)
     DhcpForceRenew,
-    // RFC4388 (not implemented)
+    // RFC 4388 (not implemented)
     DhcpLeaseQuery,
     DhcpLeaseUnassigned,
     DhcpLeaseUnknown,
     DhcpLeaseActive,
-    // RFC6926 (not implemented)
+    // RFC 6926 (not implemented)
     DhcpBulkLeaseQuery,
     DhcpLeaseQueryDone,
-    // RFC7724 (not implemented)
+    // RFC 7724 (not implemented)
     DhcpActiveLeaseQuery,
     DhcpLeaseQueryStatus,
     DhcpTls,
 }
 
-impl From<u8> for DhcpMessageType {
+impl From<u8> for MessageType {
     fn from(value: u8) -> Self {
-        use self::DhcpMessageType::*;
+        use self::MessageType::*;
         match value {
             0 => Undefined,
 

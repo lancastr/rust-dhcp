@@ -1,5 +1,6 @@
 mod message;
 mod codec;
+mod parser;
 
 extern crate bytes;
 #[macro_use] extern crate nom;

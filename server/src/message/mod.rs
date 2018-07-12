@@ -1,3 +1,4 @@
+mod error;
 mod offer;
 mod ack;
 
@@ -12,33 +13,36 @@ use protocol::*;
 pub use self::{
     offer::Offer,
     ack::Ack,
+    error::Error,
 };
 
-#[allow(dead_code)]
 pub struct MessageBuilder {
     // header section
     server_ip_address       : Ipv4Addr,
-    gateway_ip_address      : Ipv4Addr,
     server_name             : String,
 
     // options section
     subnet_mask             : Ipv4Addr,
+    domain_name_servers     : Vec<Ipv4Addr>,
+    static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
 }
 
 impl MessageBuilder {
     pub fn new(
         server_ip_address       : Ipv4Addr,
-        gateway_ip_address      : Ipv4Addr,
         server_name             : String,
 
         subnet_mask             : Ipv4Addr,
+        domain_name_servers     : Vec<Ipv4Addr>,
+        static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
     ) -> Self {
         MessageBuilder {
             server_ip_address,
-            gateway_ip_address,
             server_name,
 
             subnet_mask,
+            domain_name_servers,
+            static_routes,
         }
     }
 
@@ -47,10 +51,12 @@ impl MessageBuilder {
         discover  : &Message,
         offer     : &Offer,
     ) -> Message {
-        let mut options= Options::new();
+        let mut options = Options::new();
         options.subnet_mask             = Some(self.subnet_mask);
+        options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
+        options.static_routes           = Some(self.static_routes.to_owned());
         options.address_time            = Some(offer.lease_time);
-        options.dhcp_message_type       = Some(DhcpMessageType::DhcpOffer);
+        options.dhcp_message_type       = Some(MessageType::DhcpOffer);
         options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(offer.message.to_owned());
 
@@ -60,7 +66,7 @@ impl MessageBuilder {
             hardware_address_length     : discover.hardware_address_length,
             hardware_options            : 0u8,
 
-            transaction_identifier      : discover.transaction_identifier,
+            transaction_id              : discover.transaction_id,
             seconds                     : 0u16,
             is_broadcast                : discover.is_broadcast,
 
@@ -82,10 +88,12 @@ impl MessageBuilder {
         request     : &Message,
         ack         : &Ack,
     ) -> Message {
-        let mut options= Options::new();
+        let mut options = Options::new();
         options.subnet_mask             = Some(self.subnet_mask);
+        options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
+        options.static_routes           = Some(self.static_routes.to_owned());
         options.address_time            = Some(ack.lease_time);
-        options.dhcp_message_type       = Some(DhcpMessageType::DhcpAck);
+        options.dhcp_message_type       = Some(MessageType::DhcpAck);
         options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(ack.message.to_owned());
 
@@ -95,7 +103,7 @@ impl MessageBuilder {
             hardware_address_length     : request.hardware_address_length,
             hardware_options            : 0u8,
 
-            transaction_identifier      : request.transaction_identifier,
+            transaction_id              : request.transaction_id,
             seconds                     : 0u16,
             is_broadcast                : request.is_broadcast,
 
@@ -112,47 +120,16 @@ impl MessageBuilder {
         }
     }
 
-    pub fn dhcp_request_to_nak(
-        &self,
-        request : &Message,
-        message : &str,
-    ) -> Message {
-        let mut options= Options::new();
-        options.dhcp_message_type       = Some(DhcpMessageType::DhcpNak);
-        options.dhcp_server_id          = Some(self.server_ip_address);
-        options.dhcp_message            = Some(message.to_owned());
-
-        Message {
-            operation_code              : OperationCode::BootReply,
-            hardware_type               : HardwareType::Mac48,
-            hardware_address_length     : request.hardware_address_length,
-            hardware_options            : 0u8,
-
-            transaction_identifier      : request.transaction_identifier,
-            seconds                     : 0u16,
-            is_broadcast                : request.is_broadcast,
-
-            client_ip_address           : Ipv4Addr::new(0,0,0,0),
-            your_ip_address             : Ipv4Addr::new(0,0,0,0),
-            server_ip_address           : Ipv4Addr::new(0,0,0,0),
-            gateway_ip_address          : request.gateway_ip_address,
-
-            client_hardware_address     : request.client_hardware_address,
-            server_name                 : String::new(),
-            boot_filename               : String::new(),
-
-            options,
-        }
-    }
-
     pub fn dhcp_inform_to_ack(
         &self,
         inform  : &Message,
         message : &str,
     ) -> Message {
-        let mut options= Options::new();
+        let mut options = Options::new();
         options.subnet_mask             = Some(self.subnet_mask);
-        options.dhcp_message_type       = Some(DhcpMessageType::DhcpAck);
+        options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
+        options.static_routes           = Some(self.static_routes.to_owned());
+        options.dhcp_message_type       = Some(MessageType::DhcpAck);
         options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(message.to_owned());
 
@@ -162,7 +139,7 @@ impl MessageBuilder {
             hardware_address_length     : inform.hardware_address_length,
             hardware_options            : 0u8,
 
-            transaction_identifier      : inform.transaction_identifier,
+            transaction_id              : inform.transaction_id,
             seconds                     : 0u16,
             is_broadcast                : inform.is_broadcast,
 
@@ -173,6 +150,39 @@ impl MessageBuilder {
 
             client_hardware_address     : inform.client_hardware_address,
             server_name                 : self.server_name.to_owned(),
+            boot_filename               : String::new(),
+
+            options,
+        }
+    }
+
+    pub fn dhcp_request_to_nak(
+        &self,
+        request : &Message,
+        error   : &Error,
+    ) -> Message {
+        let mut options = Options::new();
+        options.dhcp_message_type       = Some(MessageType::DhcpNak);
+        options.dhcp_server_id          = Some(self.server_ip_address);
+        options.dhcp_message            = Some(error.to_string());
+
+        Message {
+            operation_code              : OperationCode::BootReply,
+            hardware_type               : HardwareType::Mac48,
+            hardware_address_length     : request.hardware_address_length,
+            hardware_options            : 0u8,
+
+            transaction_id              : request.transaction_id,
+            seconds                     : 0u16,
+            is_broadcast                : request.is_broadcast,
+
+            client_ip_address           : Ipv4Addr::new(0,0,0,0),
+            your_ip_address             : Ipv4Addr::new(0,0,0,0),
+            server_ip_address           : Ipv4Addr::new(0,0,0,0),
+            gateway_ip_address          : request.gateway_ip_address,
+
+            client_hardware_address     : request.client_hardware_address,
+            server_name                 : String::new(),
             boot_filename               : String::new(),
 
             options,

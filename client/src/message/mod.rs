@@ -13,29 +13,33 @@ use protocol::*;
 
 pub struct MessageBuilder {
     // header section
-    transaction_identifier      : u32,
     client_hardware_address     : MacAddress,
+    client_id                   : Vec<u8>,
 
     // options section
 }
 
 impl MessageBuilder {
     pub fn new(
-        transaction_identifier  : u32,
         client_hardware_address : MacAddress,
+        client_id               : Vec<u8>,
     ) -> Self {
         MessageBuilder {
-            transaction_identifier,
             client_hardware_address,
+            client_id,
         }
     }
 
     pub fn discover(
         &self,
+        transaction_id              : u32,
+        requested_address           : Option<Ipv4Addr>,
     ) -> Message {
-        let mut options= Options::new();
+        let mut options = Options::new();
+        options.address_request         = requested_address;
         options.address_time            = Some(1000000);
-        options.dhcp_message_type       = Some(DhcpMessageType::DhcpDiscover);
+        options.dhcp_message_type       = Some(MessageType::DhcpDiscover);
+        options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -43,7 +47,7 @@ impl MessageBuilder {
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
-            transaction_identifier      : self.transaction_identifier,
+            transaction_id,
             seconds                     : 0u16,
             is_broadcast                : true,
 
@@ -52,7 +56,7 @@ impl MessageBuilder {
             server_ip_address           : Ipv4Addr::new(0,0,0,0),
             gateway_ip_address          : Ipv4Addr::new(0,0,0,0),
 
-            client_hardware_address     : self.client_hardware_address.clone(),
+            client_hardware_address     : self.client_hardware_address.to_owned(),
             server_name                 : String::new(),
             boot_filename               : String::new(),
 

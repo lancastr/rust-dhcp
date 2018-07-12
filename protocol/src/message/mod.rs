@@ -2,8 +2,6 @@ mod operation_code;
 mod hardware_type;
 mod options;
 
-pub mod parser;
-
 use std::{
     fmt,
     net::Ipv4Addr,
@@ -31,7 +29,7 @@ pub use self::{
     options::{
         Options,
         OptionTag,
-        DhcpMessageType,
+        MessageType,
     },
     constants::*,
 };
@@ -42,7 +40,7 @@ pub struct Message {
     pub hardware_address_length     : u8,
     pub hardware_options            : u8,
 
-    pub transaction_identifier      : u32,
+    pub transaction_id              : u32,
     pub seconds                     : u16,
     pub is_broadcast                : bool,
 
@@ -70,14 +68,24 @@ impl Message {
 
         match self.options.dhcp_message_type {
             // client generated packets section
-            Some(DhcpMessageType::DhcpDiscover) => {
+            Some(MessageType::DhcpDiscover) => {
                 if let OperationCode::BootRequest = self.operation_code {} else { return false }
+                if self.transaction_id == 0
+                || !self.client_ip_address.is_unspecified()
+                || !self.your_ip_address.is_unspecified()
+                || !self.server_ip_address.is_unspecified()
+                || !self.gateway_ip_address.is_unspecified()
+
+                || self.options.client_id.is_none()
+                {
+                    return false;
+                }
             },
 
             // server generated packets section
-            Some(DhcpMessageType::DhcpOffer) => {
+            Some(MessageType::DhcpOffer) => {
                 if let OperationCode::BootReply = self.operation_code {} else { return false }
-                if self.transaction_identifier == 0
+                if self.transaction_id == 0
                 || !self.client_ip_address.is_unspecified()
                 || self.your_ip_address.is_unspecified()
                 || self.server_ip_address.is_unspecified()
@@ -87,13 +95,14 @@ impl Message {
                 || self.options.dhcp_server_id.is_none()
                 || self.options.parameter_list.is_some()
                 || self.options.dhcp_max_message_size.is_some()
+                || self.options.client_id.is_none()
                 {
                     return false;
                 }
             },
-            Some(DhcpMessageType::DhcpAck) => {
+            Some(MessageType::DhcpAck) => {
                 if let OperationCode::BootReply = self.operation_code {} else { return false }
-                if self.transaction_identifier == 0
+                if self.transaction_id == 0
                 || self.your_ip_address.is_unspecified()
                 || self.server_ip_address.is_unspecified()
 
@@ -105,9 +114,9 @@ impl Message {
                     return false;
                 }
             },
-            Some(DhcpMessageType::DhcpNak) => {
+            Some(MessageType::DhcpNak) => {
                 if let OperationCode::BootReply = self.operation_code {} else { return false }
-                if self.transaction_identifier == 0
+                if self.transaction_id == 0
                 || !self.client_ip_address.is_unspecified()
                 || !self.your_ip_address.is_unspecified()
                 || !self.server_ip_address.is_unspecified()
@@ -130,25 +139,40 @@ impl Message {
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Operation code             : {:?}", self.operation_code)?;
-        writeln!(f, "Hardware type              : {:?}", self.hardware_type)?;
-        writeln!(f, "Hardware address length    : {}", self.hardware_address_length)?;
-        writeln!(f, "Hardware options           : {}", self.hardware_options)?;
+        writeln!(f)?;
+        writeln!(f, "_____________________________________________________________________HEADER")?;
+        writeln!(f, "operation_code             : {:?}", self.operation_code)?;
+        writeln!(f, "hardware_type              : {:?}", self.hardware_type)?;
+        writeln!(f, "hardware_address_length    : {:?}", self.hardware_address_length)?;
+        writeln!(f, "hardware_options           : {:?}", self.hardware_options)?;
+        writeln!(f, "transaction_id (client ID) : {:?}", self.transaction_id)?;
+        writeln!(f, "seconds                    : {:?}", self.seconds)?;
+        writeln!(f, "is_broadcast               : {:?}", self.is_broadcast)?;
+        writeln!(f, "client_ip_address          : {:?}", self.client_ip_address)?;
+        writeln!(f, "your_ip_address            : {:?}", self.your_ip_address)?;
+        writeln!(f, "server_ip_address          : {:?}", self.server_ip_address)?;
+        writeln!(f, "gateway_ip_address         : {:?}", self.gateway_ip_address)?;
+        writeln!(f, "client_hardware_address    : {:?}", self.client_hardware_address)?;
+        writeln!(f, "server_name                : {}", self.server_name)?;
+        writeln!(f, "boot_filename              : {}", self.boot_filename)?;
 
-        writeln!(f, "Transaction ID (client ID) : {}", self.transaction_identifier)?;
-        writeln!(f, "Seconds                    : {}", self.seconds)?;
-        writeln!(f, "Broadcast                  : {}", self.is_broadcast)?;
+        writeln!(f, "____________________________________________________________________OPTIONS")?;
+        if let Some(ref v) = self.options.subnet_mask               { writeln!(f, "subnet_mask                : {:?}", v)?;}
 
-        writeln!(f, "Client IP address          : {}", self.client_ip_address)?;
-        writeln!(f, "Your IP address            : {}", self.your_ip_address)?;
-        writeln!(f, "Server IP address          : {}", self.server_ip_address)?;
-        writeln!(f, "Gateway IP address         : {}", self.gateway_ip_address)?;
+        if let Some(ref v) = self.options.domain_name_servers       { writeln!(f, "domain_name_servers        : {:?}", v)?;}
 
-        writeln!(f, "Client hardware adddress   : {}", self.client_hardware_address)?;
-        writeln!(f, "Server name                : {}", self.server_name)?;
-        writeln!(f, "Boot filename              : {}", self.boot_filename)?;
+        if let Some(ref v) = self.options.static_routes             { writeln!(f, "static_routes              : {:?}", v)?;}
 
-        writeln!(f, "Options                    : {:?}", self.options)?;
+        if let Some(ref v) = self.options.address_request           { writeln!(f, "address_request            : {:?}", v)?;}
+        if let Some(ref v) = self.options.address_time              { writeln!(f, "address_time               : {:?}", v)?;}
+        if let Some(ref v) = self.options.overload                  { writeln!(f, "overload                   : {:?}", v)?;}
+        if let Some(ref v) = self.options.dhcp_message_type         { writeln!(f, "dhcp_message_type          : {:?}", v)?;}
+        if let Some(ref v) = self.options.dhcp_server_id            { writeln!(f, "dhcp_server_id             : {:?}", v)?;}
+        if let Some(ref v) = self.options.parameter_list            { writeln!(f, "parameter_list             : {:?}", v)?;}
+        if let Some(ref v) = self.options.dhcp_message              { writeln!(f, "dhcp_message               : {:?}", v)?;}
+        if let Some(ref v) = self.options.dhcp_max_message_size     { writeln!(f, "dhcp_max_message_size      : {:?}", v)?;}
+
+        if let Some(ref v) = self.options.client_id                 { writeln!(f, "client_id                  : {:?}", v)?;}
 
         Ok(())
     }
