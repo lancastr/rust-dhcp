@@ -58,20 +58,20 @@ impl Storage {
     //     RFC 2132 §4.3.1
     //     The server must also choose an expiration time for the lease, as follows:
     //
-    //     1. IF has not requested a specific lease in the
-    //        DHCPDISCOVER message and already has an assigned network
+    //     1. IF the client has not requested a specific lease in the
+    //        DHCPDISCOVER message and the client already has an assigned network
     //        address, the server returns the lease expiration time previously
-    //        assigned to that address (note that must explicitly
+    //        assigned to that address (note that the client must explicitly
     //        request a specific lease to extend the expiration time on a
     //        previously assigned address), ELSE
     //
-    //     2. IF has not requested a specific lease in the
-    //        DHCPDISCOVER message and does not have an assigned
+    //     2. IF the client has not requested a specific lease in the
+    //        DHCPDISCOVER message and the client does not have an assigned
     //        network address, the server assigns a locally configured default
     //        lease time, ELSE
     //
-    //     3. IF has requested a specific lease in the DHCPDISCOVER
-    //        message (regardless of whether has an assigned network
+    //     3. IF the client has requested a specific lease in the DHCPDISCOVER
+    //        message (regardless of whether the client has an assigned network
     //        address), the server may choose either to return the requested
     //        lease (if the lease is acceptable to local policy) or select
     //        another lease.
@@ -80,10 +80,10 @@ impl Storage {
     //     RFC 2132 §4.3.1
     //     If an address is available, the new address SHOULD be chosen as follows:
     //
-    //     1. The current address as recorded in the current
+    //     1. The client's current address as recorded in the client's current
     //        binding, ELSE
     //
-    //     2. The previous address as recorded in the (now
+    //     2. The client's previous address as recorded in the client's (now
     //        expired or released) binding, if that address is in the server's
     //        pool of available addresses and not already allocated, ELSE
     //

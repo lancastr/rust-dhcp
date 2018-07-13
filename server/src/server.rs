@@ -13,11 +13,11 @@ use tokio::{
 };
 use hostname;
 
-use protocol::*;
+use protocol::{self, *};
 use framed::*;
 use message::{
+    self,
     MessageBuilder,
-    Error,
 };
 use storage::Storage;
 
@@ -47,6 +47,7 @@ impl Server {
 
         // option fields for the message builder
         subnet_mask             : Ipv4Addr,
+        routers                 : Vec<Ipv4Addr>,
         domain_name_servers     : Vec<Ipv4Addr>,
         static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
     ) -> Result<Self, io::Error> {
@@ -58,6 +59,7 @@ impl Server {
             server_name.unwrap_or(hostname::get_hostname().unwrap_or_default()),
 
             subnet_mask,
+            routers,
             domain_name_servers,
             static_routes,
         );
@@ -85,9 +87,10 @@ impl Future for Server {
 
             if let Some((mut addr, request)) = try_ready!(self.socket.poll()) {
                 // report and drop invalid messages
-                info!("Request from {}:\n{}", addr, request);
-                if !request.is_valid() {
-                    warn!("The request is invalid");
+                info!("{:?} from {}:\n{}", request.options.dhcp_message_type.unwrap_or(MessageType::Undefined), addr, request);
+                if let Err(protocol::Error::Validation(description)) = request.validate() {
+                    trace!("Invalid request from {}:\n{}", addr, request);
+                    warn!("Invalid request error: {}", description.to_string());
                     continue;
                 }
 
@@ -134,9 +137,9 @@ impl Future for Server {
                         ) {
                             Ok(offer) => {
                                 let response = self.message_builder.dhcp_discover_to_offer(&request, &offer);
-                                info!("Response to {}:\n{}", addr, response);
+                                trace!("DhcpOffer to {}:\n{}", addr, response);
                                 if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                    panic!("Must wait for poll_complete before");
+                                    panic!("Must wait for poll_complete first");
                                 }
                             },
                             Err(error) => warn!("Address allocation error: {}", error.to_string()),
@@ -176,17 +179,17 @@ impl Future for Server {
                             ) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                    info!("Response to {}:\n{}", addr, response);
+                                    trace!("DhcpAck to {}:\n{}", addr, response);
                                     if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                        panic!("Must wait for poll_complete before");
+                                        panic!("Must wait for poll_complete first");
                                     }
                                 },
                                 Err(error) => {
                                     warn!("Address assignment error: {}", error.to_string());
                                     let response = self.message_builder.dhcp_request_to_nak(&request, &error);
-                                    info!("Response to {}:\n{}", addr, response);
+                                    trace!("DhcpNak to {}:\n{}", addr, response);
                                     if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                        panic!("Must wait for poll_complete before");
+                                        panic!("Must wait for poll_complete first");
                                     }
                                 },
                             };
@@ -201,18 +204,18 @@ impl Future for Server {
                             ) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                    info!("Response to {}:\n{}", addr, response);
+                                    trace!("DhcpAck to {}:\n{}", addr, response);
                                     if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                        panic!("Must wait for poll_complete before");
+                                        panic!("Must wait for poll_complete first");
                                     }
                                 },
                                 Err(error) => {
                                     warn!("Address checking error: {}", error.to_string());
-                                    if let Error::LeaseHasDifferentAddress = error {
+                                    if let message::Error::LeaseHasDifferentAddress = error {
                                         let response = self.message_builder.dhcp_request_to_nak(&request, &error);
-                                        info!("Response to {}:\n{}", addr, response);
+                                        trace!("DhcpNak to {}:\n{}", addr, response);
                                         if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                            panic!("Must wait for poll_complete before");
+                                            panic!("Must wait for poll_complete first");
                                         }
                                     }
                                     /*
@@ -233,9 +236,9 @@ impl Future for Server {
                         ) {
                             Ok(ack) => {
                                 let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                info!("Response to {}:\n{}", addr, response);
+                                trace!("DhcpAck to {}:\n{}", addr, response);
                                 if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                    panic!("Must wait for poll_complete before");
+                                    panic!("Must wait for poll_complete first");
                                 }
                             },
                             Err(error) => warn!("Address checking error: {}", error.to_string()),
@@ -283,9 +286,9 @@ impl Future for Server {
                         to the client and SHOULD NOT fill in 'yiaddr'.
                         */
                         let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
-                        info!("Response to {}:\n{}", addr, response);
+                        trace!("DhcpAck to {}:\n{}", addr, response);
                         if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                            panic!("Must wait for poll_complete before");
+                            panic!("Must wait for poll_complete first");
                         }
                     },
                     _ => {},

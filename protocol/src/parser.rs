@@ -37,10 +37,10 @@ named!(pub parse_message<&[u8], Message>,
 
                                       tag!(MAGIC_COOKIE) >>
         subnet_mask                 : opt!(preceded!(tag!(&[SubnetMask as u8, U32_LEN])         , u32_to_ipv4)) >>
+        routers                     : opt!(preceded!(tag!(&[Routers as u8])                     , bytes_to_ipv4_vec)) >>
+        domain_name_servers         : opt!(preceded!(tag!(&[DomainServers as u8])               , bytes_to_ipv4_vec)) >>
 
-        domain_name_servers         : opt!(preceded!(tag!(&[DomainServer as u8])                , bytes_to_ipv4_vec)) >>
-
-        static_routes               : opt!(preceded!(tag!(&[StaticRoute as u8])                 , bytes_to_ipv4_pairs_vec)) >>
+        static_routes               : opt!(preceded!(tag!(&[StaticRoutes as u8])                , bytes_to_ipv4_pairs_vec)) >>
 
         address_request             : opt!(preceded!(tag!(&[AddressRequest as u8, U32_LEN])     , u32_to_ipv4)) >>
         address_time                : opt!(preceded!(tag!(&[AddressTime as u8, U32_LEN])        , be_u32)) >>
@@ -77,7 +77,7 @@ named!(pub parse_message<&[u8], Message>,
             options: Options{
                 subnet_mask,
                 time_offset                     : None,
-                routers                         : None,
+                routers,
                 time_servers                    : None,
                 name_servers                    : None,
                 domain_name_servers,
@@ -122,8 +122,8 @@ named!(pub parse_message<&[u8], Message>,
                 netbios_distribution_server     : None,
                 netbios_node_type               : None,
                 netbios_scope                   : None,
-                x_window_font                   : None,
-                x_window_manager                : None,
+                x_window_font_servers           : None,
+                x_window_manager_servers        : None,
                 address_request,
                 address_time,
                 overload,
@@ -138,8 +138,8 @@ named!(pub parse_message<&[u8], Message>,
                 client_id,
                 // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
                 // skipping RFC 2242 code 63 (NetWare/IP sub Options)
-                nis_domain_name                 : None,
-                nis_server_address              : None,
+                nis_v3_domain_name              : None,
+                nis_v3_servers                  : None,
                 server_name                     : None,
                 bootfile_name                   : None,
                 home_agent_addresses            : None,

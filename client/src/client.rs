@@ -13,7 +13,7 @@ use eui48::{
 };
 use rand;
 
-use protocol::*;
+use protocol::{self, *};
 use framed::*;
 use message::MessageBuilder;
 
@@ -101,17 +101,47 @@ impl Future for Client {
                     let discover = self.message_builder.discover(
                         self.state.transaction_id,
                         Some(Ipv4Addr::new(192,168,0,13)),
+                        Some(604800),
                     );
+                    trace!("DhcpDiscover to {}:\n{}", self.state.destination, discover);
+
                     if let AsyncSink::NotReady(_) = self.socket.start_send((self.state.destination, discover))? {
-                        return Ok(Async::NotReady);
+                        panic!("Must wait for poll_complete first");
                     }
                     self.state.dhcp_state = DhcpState::Selecting;
                 },
                 DhcpState::Selecting => {
                     let (addr, offer) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
-                    info!("Offer from {}:\n{}", addr, offer);
+                    info!("DhcpOffer from {}:\n{}", addr, offer);
+                    if let Err(protocol::Error::Validation(description)) = offer.validate() {
+                        warn!("The offer is invalid: {}", description.to_string());
+                        continue;
+                    }
+
+                    self.state.destination = SocketAddr::new(IpAddr::V4(offer.server_ip_address), DHCP_PORT_SERVER);
+                    let request = self.message_builder.request_selecting(
+                        self.state.transaction_id,
+                        Ipv4Addr::new(192,168,0,13),
+                        Some(604800),
+                        offer.options.dhcp_server_id.unwrap(),
+                    );
+                    trace!("DhcpRequest to {}:\n{}", self.state.destination, request);
+
+                    if let AsyncSink::NotReady(_) = self.socket.start_send((self.state.destination, request))? {
+                        panic!("Must wait for poll_complete first");
+                    }
                     self.state.dhcp_state = DhcpState::Requesting;
-                    return Ok(Async::Ready(Some((addr, offer))));
+                },
+                DhcpState::Requesting => {
+                    let (addr, ack) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
+                    info!("DhcpAck from {}:\n{}", addr, ack);
+                    if let Err(protocol::Error::Validation(description)) = ack.validate() {
+                        warn!("The ack is invalid: {}", description.to_string());
+                        continue;
+                    }
+
+                    self.state.dhcp_state = DhcpState::Bound;
+                    return Ok(Async::Ready(Some((addr, ack))));
                 },
                 _ => {},
             }

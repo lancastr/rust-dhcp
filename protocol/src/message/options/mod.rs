@@ -64,8 +64,8 @@ pub struct Options {
     pub netbios_distribution_server     : Option<Vec<Ipv4Addr>>,
     pub netbios_node_type               : Option<u8>,
     pub netbios_scope                   : Option<String>,
-    pub x_window_font                   : Option<Vec<Ipv4Addr>>,
-    pub x_window_manager                : Option<Vec<Ipv4Addr>>,
+    pub x_window_font_servers           : Option<Vec<Ipv4Addr>>,
+    pub x_window_manager_servers        : Option<Vec<Ipv4Addr>>,
     // DHCP Extensions (RFC 2132 §9)
     pub address_request                 : Option<Ipv4Addr>,
     pub address_time                    : Option<u32>,
@@ -82,19 +82,19 @@ pub struct Options {
     // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
     // skipping RFC 2242 code 63 (NetWare/IP sub Options)
     // Application and Service Parameters (RFC 2132 §8) (continuation)
-    pub nis_domain_name                 : Option<()>,
-    pub nis_server_address              : Option<()>,
-    pub server_name                     : Option<()>,
-    pub bootfile_name                   : Option<()>,
-    pub home_agent_addresses            : Option<()>,
-    pub smtp_servers                    : Option<()>,
-    pub pop3_servers                    : Option<()>,
-    pub nntp_servers                    : Option<()>,
-    pub www_servers                     : Option<()>,
-    pub finger_servers                  : Option<()>,
-    pub irc_servers                     : Option<()>,
-    pub street_talk_servers             : Option<()>,
-    pub stda_servers                    : Option<()>,
+    pub nis_v3_domain_name              : Option<String>,
+    pub nis_v3_servers                  : Option<Vec<Ipv4Addr>>,
+    pub server_name                     : Option<String>,
+    pub bootfile_name                   : Option<String>,
+    pub home_agent_addresses            : Option<Vec<Ipv4Addr>>,
+    pub smtp_servers                    : Option<Vec<Ipv4Addr>>,
+    pub pop3_servers                    : Option<Vec<Ipv4Addr>>,
+    pub nntp_servers                    : Option<Vec<Ipv4Addr>>,
+    pub www_servers                     : Option<Vec<Ipv4Addr>>,
+    pub finger_servers                  : Option<Vec<Ipv4Addr>>,
+    pub irc_servers                     : Option<Vec<Ipv4Addr>>,
+    pub street_talk_servers             : Option<Vec<Ipv4Addr>>,
+    pub stda_servers                    : Option<Vec<Ipv4Addr>>,
 }
 
 impl Options {
@@ -147,8 +147,8 @@ impl Options {
             netbios_distribution_server     : None,
             netbios_node_type               : None,
             netbios_scope                   : None,
-            x_window_font                   : None,
-            x_window_manager                : None,
+            x_window_font_servers           : None,
+            x_window_manager_servers        : None,
             address_request                 : None,
             address_time                    : None,
             overload                        : None,
@@ -163,8 +163,8 @@ impl Options {
             client_id                       : None,
             // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
             // skipping RFC 2242 code 63 (NetWare/IP sub Options)
-            nis_domain_name                 : None,
-            nis_server_address              : None,
+            nis_v3_domain_name              : None,
+            nis_v3_servers                  : None,
             server_name                     : None,
             bootfile_name                   : None,
             home_agent_addresses            : None,

@@ -23,6 +23,7 @@ pub struct MessageBuilder {
 
     // options section
     subnet_mask             : Ipv4Addr,
+    routers                 : Vec<Ipv4Addr>,
     domain_name_servers     : Vec<Ipv4Addr>,
     static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
 }
@@ -33,6 +34,7 @@ impl MessageBuilder {
         server_name             : String,
 
         subnet_mask             : Ipv4Addr,
+        routers                 : Vec<Ipv4Addr>,
         domain_name_servers     : Vec<Ipv4Addr>,
         static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
     ) -> Self {
@@ -41,6 +43,7 @@ impl MessageBuilder {
             server_name,
 
             subnet_mask,
+            routers,
             domain_name_servers,
             static_routes,
         }
@@ -48,11 +51,12 @@ impl MessageBuilder {
 
     pub fn dhcp_discover_to_offer(
         &self,
-        discover  : &Message,
-        offer     : &Offer,
+        discover                        : &Message,
+        offer                           : &Offer,
     ) -> Message {
         let mut options = Options::new();
         options.subnet_mask             = Some(self.subnet_mask);
+        options.routers                 = Some(self.routers.to_owned());
         options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
         options.static_routes           = Some(self.static_routes.to_owned());
         options.address_time            = Some(offer.lease_time);
@@ -85,11 +89,12 @@ impl MessageBuilder {
 
     pub fn dhcp_request_to_ack(
         &self,
-        request     : &Message,
-        ack         : &Ack,
+        request                         : &Message,
+        ack                             : &Ack,
     ) -> Message {
         let mut options = Options::new();
         options.subnet_mask             = Some(self.subnet_mask);
+        options.routers                 = Some(self.routers.to_owned());
         options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
         options.static_routes           = Some(self.static_routes.to_owned());
         options.address_time            = Some(ack.lease_time);
@@ -122,11 +127,12 @@ impl MessageBuilder {
 
     pub fn dhcp_inform_to_ack(
         &self,
-        inform  : &Message,
-        message : &str,
+        inform                          : &Message,
+        message                         : &str,
     ) -> Message {
         let mut options = Options::new();
         options.subnet_mask             = Some(self.subnet_mask);
+        options.routers                 = Some(self.routers.to_owned());
         options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
         options.static_routes           = Some(self.static_routes.to_owned());
         options.dhcp_message_type       = Some(MessageType::DhcpAck);
@@ -158,8 +164,8 @@ impl MessageBuilder {
 
     pub fn dhcp_request_to_nak(
         &self,
-        request : &Message,
-        error   : &Error,
+        request                         : &Message,
+        error                           : &Error,
     ) -> Message {
         let mut options = Options::new();
         options.dhcp_message_type       = Some(MessageType::DhcpNak);

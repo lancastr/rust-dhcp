@@ -56,84 +56,118 @@ pub struct Message {
     pub options                     : Options,
 }
 
+#[derive(Fail, Debug)]
+pub enum Error {
+    #[fail(display = "Validation error: {}", _0)]
+    Validation(&'static str),
+}
+
 impl Message {
-    pub fn is_valid(&self) -> bool {
-        if let HardwareType::Undefined = self.hardware_type { return false }
-        if self.hardware_address_length != EUI48LEN as u8
-        || self.hardware_options != 0u8
-        || self.seconds != 0u16
-        {
-            return false;
-        }
+    pub fn validate(&self) -> Result<(), self::Error> {
+        use Error::Validation;
+
+        if let HardwareType::Undefined = self.hardware_type { return Err(Validation("hardware_type unset")); }
+        if self.hardware_address_length != EUI48LEN as u8 { return Err(Validation("hardware_address_length wrong")); }
+        if self.hardware_options != 0u8 { return Err(Validation("hardware_options set")); }
+        if self.transaction_id == 0u32 { return Err(Validation("transaction_id unset")); }
 
         match self.options.dhcp_message_type {
             // client generated packets section
             Some(MessageType::DhcpDiscover) => {
-                if let OperationCode::BootRequest = self.operation_code {} else { return false }
-                if self.transaction_id == 0
-                || !self.client_ip_address.is_unspecified()
-                || !self.your_ip_address.is_unspecified()
-                || !self.server_ip_address.is_unspecified()
-                || !self.gateway_ip_address.is_unspecified()
+                if let OperationCode::BootRequest = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if !self.client_ip_address.is_unspecified() { return Err(Validation("client_ip_address set")); }
+                if !self.your_ip_address.is_unspecified() { return Err(Validation("your_ip_address set")); }
+                if !self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.gateway_ip_address.is_unspecified() { return Err(Validation("gateway_ip_address set")); }
 
-                || self.options.client_id.is_none()
-                {
-                    return false;
-                }
+                if self.options.client_id.is_none() { return Err(Validation("Option client_id unset")); }
+            },
+            Some(MessageType::DhcpRequest) => {
+                if let OperationCode::BootRequest = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if !self.your_ip_address.is_unspecified() { return Err(Validation("your_ip_address set")); }
+                if !self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.gateway_ip_address.is_unspecified() { return Err(Validation("gateway_ip_address set")); }
+
+                if self.options.client_id.is_none() { return Err(Validation("Option client_id unset")); }
+            },
+            Some(MessageType::DhcpInform) => {
+                if let OperationCode::BootRequest = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if self.client_ip_address.is_unspecified() { return Err(Validation("client_ip_address unset")); }
+                if !self.your_ip_address.is_unspecified() { return Err(Validation("your_ip_address set")); }
+                if !self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.gateway_ip_address.is_unspecified() { return Err(Validation("gateway_ip_address set")); }
+
+                if self.options.address_request.is_some() { return Err(Validation("Option address_request set")); }
+                if self.options.address_time.is_some() { return Err(Validation("Option address_time set")); }
+                if self.options.dhcp_server_id.is_some() { return Err(Validation("Option dhcp_server_id set")); }
+                if self.options.client_id.is_none() { return Err(Validation("Option client_id unset")); }
+            },
+            Some(MessageType::DhcpRelease) => {
+                if let OperationCode::BootRequest = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if self.client_ip_address.is_unspecified() { return Err(Validation("server_ip_address unset")); }
+                if !self.your_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.gateway_ip_address.is_unspecified() { return Err(Validation("gateway_ip_address set")); }
+
+                if self.options.address_request.is_some() { return Err(Validation("Option address_request set")); }
+                if self.options.address_time.is_some() { return Err(Validation("Option address_time set")); }
+                if self.options.dhcp_server_id.is_none() { return Err(Validation("Option dhcp_server_id unset")); }
+                if self.options.client_id.is_none() { return Err(Validation("Option client_id unset")); }
+            },
+            Some(MessageType::DhcpDecline) => {
+                if let OperationCode::BootRequest = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if !self.client_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.your_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
+                if !self.gateway_ip_address.is_unspecified() { return Err(Validation("gateway_ip_address set")); }
+
+                if self.options.address_request.is_none() { return Err(Validation("Option address_request unset")); }
+                if self.options.address_time.is_some() { return Err(Validation("Option address_time set")); }
+                if self.options.dhcp_server_id.is_none() { return Err(Validation("Option dhcp_server_id unset")); }
+                if self.options.client_id.is_none() { return Err(Validation("Option client_id unset")); }
             },
 
             // server generated packets section
             Some(MessageType::DhcpOffer) => {
-                if let OperationCode::BootReply = self.operation_code {} else { return false }
-                if self.transaction_id == 0
-                || !self.client_ip_address.is_unspecified()
-                || self.your_ip_address.is_unspecified()
-                || self.server_ip_address.is_unspecified()
+                if let OperationCode::BootReply = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if !self.client_ip_address.is_unspecified() { return Err(Validation("client_ip_address set")); }
+                if self.your_ip_address.is_unspecified() { return Err(Validation("your_ip_address unset")); }
+                if self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address unset")); }
 
-                || self.options.address_request.is_some()
-                || self.options.address_time.is_none()
-                || self.options.dhcp_server_id.is_none()
-                || self.options.parameter_list.is_some()
-                || self.options.dhcp_max_message_size.is_some()
-                || self.options.client_id.is_none()
-                {
-                    return false;
-                }
+                if self.options.address_request.is_some() { return Err(Validation("Option address_request set")); }
+                if self.options.address_time.is_none() { return Err(Validation("Option address_time unset")); }
+                if self.options.dhcp_server_id.is_none() { return Err(Validation("Option dhcp_server_id unset")); }
+                if self.options.parameter_list.is_some() { return Err(Validation("Option parameter_list set")); }
+                if self.options.dhcp_max_message_size.is_some() { return Err(Validation("Option dhcp_max_message_size set")); }
+                if self.options.client_id.is_some() { return Err(Validation("Option client_id set")); }
             },
             Some(MessageType::DhcpAck) => {
-                if let OperationCode::BootReply = self.operation_code {} else { return false }
-                if self.transaction_id == 0
-                || self.your_ip_address.is_unspecified()
-                || self.server_ip_address.is_unspecified()
+                if let OperationCode::BootReply = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if self.your_ip_address.is_unspecified() { return Err(Validation("your_ip_address unset")); }
+                if self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address unset")); }
 
-                || self.options.address_request.is_some()
-                || self.options.dhcp_server_id.is_none()
-                || self.options.parameter_list.is_some()
-                || self.options.dhcp_max_message_size.is_some()
-                {
-                    return false;
-                }
+                if self.options.address_request.is_some() { return Err(Validation("Option address_request set")); }
+                if self.options.dhcp_server_id.is_none() { return Err(Validation("Option dhcp_server_id unset")); }
+                if self.options.parameter_list.is_some() { return Err(Validation("Option parameter_list set")); }
+                if self.options.dhcp_max_message_size.is_some() { return Err(Validation("Option dhcp_max_message_size set")); }
+                if self.options.client_id.is_some() { return Err(Validation("Option client_id set")); }
             },
             Some(MessageType::DhcpNak) => {
-                if let OperationCode::BootReply = self.operation_code {} else { return false }
-                if self.transaction_id == 0
-                || !self.client_ip_address.is_unspecified()
-                || !self.your_ip_address.is_unspecified()
-                || !self.server_ip_address.is_unspecified()
+                if let OperationCode::BootReply = self.operation_code {} else { return Err(Validation("operation_code wrong")); }
+                if !self.client_ip_address.is_unspecified() { return Err(Validation("client_ip_address set")); }
+                if !self.your_ip_address.is_unspecified() { return Err(Validation("your_ip_address set")); }
+                if !self.server_ip_address.is_unspecified() { return Err(Validation("server_ip_address set")); }
 
-                || self.options.address_request.is_some()
-                || self.options.address_time.is_some()
-                || self.options.dhcp_server_id.is_none()
-                || self.options.parameter_list.is_some()
-                || self.options.dhcp_max_message_size.is_some()
-                {
-                    return false;
-                }
+                if self.options.address_request.is_some() { return Err(Validation("Option address_request set")); }
+                if self.options.address_time.is_some() { return Err(Validation("Option address_time set")); }
+                if self.options.dhcp_server_id.is_none() { return Err(Validation("Option dhcp_server_id unset")); }
+                if self.options.parameter_list.is_some() { return Err(Validation("Option parameter_list set")); }
+                if self.options.dhcp_max_message_size.is_some() { return Err(Validation("Option dhcp_max_message_size set")); }
             },
-            _ => return false,
+            _ => return Err(Validation("Invalid message type")),
         }
 
-        true
+        Ok(())
     }
 }
 
@@ -158,6 +192,7 @@ impl fmt::Display for Message {
 
         writeln!(f, "____________________________________________________________________OPTIONS")?;
         if let Some(ref v) = self.options.subnet_mask               { writeln!(f, "subnet_mask                : {:?}", v)?;}
+        if let Some(ref v) = self.options.routers                   { writeln!(f, "routers                    : {:?}", v)?;}
 
         if let Some(ref v) = self.options.domain_name_servers       { writeln!(f, "domain_name_servers        : {:?}", v)?;}
 

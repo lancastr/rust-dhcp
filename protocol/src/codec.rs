@@ -54,8 +54,16 @@ impl Codec {
             cursor.put_u32_be(u32::from(value));
         }
 
+        if let Some(ref value) = message.options.routers {
+            cursor.put_u8(OptionTag::Routers as u8);
+            cursor.put_u8((mem::size_of::<u32>() * value.len()) as u8);
+            for element in value.iter() {
+                cursor.put_u32_be(u32::from(element.to_owned()));
+            }
+        }
+
         if let Some(ref value) = message.options.domain_name_servers {
-            cursor.put_u8(OptionTag::DomainServer as u8);
+            cursor.put_u8(OptionTag::DomainServers as u8);
             cursor.put_u8((mem::size_of::<u32>() * value.len()) as u8);
             for element in value.iter() {
                 cursor.put_u32_be(u32::from(element.to_owned()));
@@ -63,7 +71,7 @@ impl Codec {
         }
 
         if let Some(ref value) = message.options.static_routes {
-            cursor.put_u8(OptionTag::StaticRoute as u8);
+            cursor.put_u8(OptionTag::StaticRoutes as u8);
             cursor.put_u8((mem::size_of::<u32>() * value.len() * 2) as u8);
             for element in value.iter() {
                 cursor.put_u32_be(u32::from(element.0.to_owned()));

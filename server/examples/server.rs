@@ -20,6 +20,7 @@ fn main() {
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
 
             Ipv4Addr::new(255,255,0,0),
+            vec![Ipv4Addr::new(192,168,0,1)],
             vec![Ipv4Addr::new(8,8,8,8), Ipv4Addr::new(8,8,4,4)],
             vec![(Ipv4Addr::new(192,168,0,12), Ipv4Addr::new(192,168,0,12))],
         )
