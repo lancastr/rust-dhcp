@@ -19,14 +19,13 @@ use net2::UdpBuilder;
 
 use protocol::*;
 
-const BUFFER_READ_CAPACITY: usize   = 1024;
-const BUFFER_WRITE_CAPACITY: usize  = 1024;
+const BUFFER_READ_CAPACITY: usize   = 8192;
+const BUFFER_WRITE_CAPACITY: usize  = 8192;
 
 pub struct DhcpFramed {
     socket      : UdpSocket,
     buf_read    : Vec<u8>,
     buf_write   : Vec<u8>,
-
     pending     : Option<(SocketAddr, usize)>,
 }
 
@@ -51,7 +50,6 @@ impl DhcpFramed {
             socket,
             buf_read: vec![0u8; BUFFER_READ_CAPACITY],
             buf_write: vec![0u8; BUFFER_WRITE_CAPACITY],
-
             pending: None,
         })
     }
@@ -63,7 +61,7 @@ impl Stream for DhcpFramed {
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         let (amount, addr) = try_ready!(self.socket.poll_recv_from(&mut self.buf_read));
-        match Codec::decode(&self.buf_read[..amount]) {
+        match Message::from_bytes(&self.buf_read[..amount]) {
             Ok(frame) => Ok(Async::Ready(Some((addr, frame)))),
             Err(error) => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -86,7 +84,7 @@ impl Sink for DhcpFramed {
         }
 
         let (addr, message) = item;
-        let amount = Codec::encode(&message, &mut self.buf_write)?;
+        let amount = message.to_bytes(&mut self.buf_write)?;
         self.pending = Some((addr, amount));
         self.poll_complete()?;
 
@@ -99,7 +97,10 @@ impl Sink for DhcpFramed {
             Some((addr, amount)) => {
                 let sent = try_ready!(self.socket.poll_send_to(&self.buf_write[..amount], &addr));
                 if sent != amount {
-                    return Err(io::Error::new(io::ErrorKind::WriteZero, "Failed to write entire datagram to socket"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "Failed to write entire datagram to socket",
+                    ));
                 }
             },
         }

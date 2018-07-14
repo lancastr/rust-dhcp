@@ -81,6 +81,10 @@ impl Future for Server {
     type Item = ();
     type Error = io::Error;
 
+    //
+    // unwrap()'s in this code are safe.
+    // All the validation is done in the protocol crate.
+    //
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
             if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
@@ -88,9 +92,8 @@ impl Future for Server {
             if let Some((mut addr, request)) = try_ready!(self.socket.poll()) {
                 // report and drop invalid messages
                 info!("{:?} from {}:\n{}", request.options.dhcp_message_type.unwrap_or(MessageType::Undefined), addr, request);
-                if let Err(protocol::Error::Validation(description)) = request.validate() {
-                    trace!("Invalid request from {}:\n{}", addr, request);
-                    warn!("Invalid request error: {}", description.to_string());
+                if let Err(protocol::Error::Validation) = request.validate() {
+                    warn!("Invalid request from {}:\n{}", addr, request);
                     continue;
                 }
 
@@ -175,6 +178,7 @@ impl Future for Server {
                         if request.options.dhcp_server_id.is_some() {
                             match self.storage.assign(
                                 request.options.client_id.to_owned(),
+                                request.options.address_time,
                                 request.options.address_request,
                             ) {
                                 Ok(ack) => {

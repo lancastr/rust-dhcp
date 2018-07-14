@@ -101,6 +101,8 @@ impl MessageBuilder {
         options.dhcp_message_type       = Some(MessageType::DhcpAck);
         options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(ack.message.to_owned());
+        options.renewal_time            = Some(ack.renewal_time);
+        options.rebinding_time          = Some(ack.rebinding_time);
 
         Message {
             operation_code              : OperationCode::BootReply,

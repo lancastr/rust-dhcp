@@ -6,7 +6,7 @@ use eui48::{
     EUI48LEN,
 };
 
-use message::{
+use super::{
     *,
     OptionTag::*,
 };
@@ -39,9 +39,7 @@ named!(pub parse_message<&[u8], Message>,
         subnet_mask                 : opt!(preceded!(tag!(&[SubnetMask as u8, U32_LEN])         , u32_to_ipv4)) >>
         routers                     : opt!(preceded!(tag!(&[Routers as u8])                     , bytes_to_ipv4_vec)) >>
         domain_name_servers         : opt!(preceded!(tag!(&[DomainServers as u8])               , bytes_to_ipv4_vec)) >>
-
         static_routes               : opt!(preceded!(tag!(&[StaticRoutes as u8])                , bytes_to_ipv4_pairs_vec)) >>
-
         address_request             : opt!(preceded!(tag!(&[AddressRequest as u8, U32_LEN])     , u32_to_ipv4)) >>
         address_time                : opt!(preceded!(tag!(&[AddressTime as u8, U32_LEN])        , be_u32)) >>
         overload                    : opt!(preceded!(tag!(&[Overload as u8, U8_LEN])            , be_u8)) >>
@@ -50,9 +48,9 @@ named!(pub parse_message<&[u8], Message>,
         parameter_list              : opt!(preceded!(tag!(&[ParameterList as u8])               , bytes_to_string)) >>
         dhcp_message                : opt!(preceded!(tag!(&[DhcpMessage as u8])                 , bytes_to_string)) >>
         dhcp_max_message_size       : opt!(preceded!(tag!(&[DhcpMaxMessageSize as u8, U16_LEN]) , be_u16)) >>
-
+        renewal_time                : opt!(preceded!(tag!(&[RenewalTime as u8, U32_LEN])        , be_u32)) >>
+        rebinding_time              : opt!(preceded!(tag!(&[RebindingTime as u8, U32_LEN])      , be_u32)) >>
         client_id                   : opt!(preceded!(tag!(&[ClientId as u8])                    , bytes_to_vec)) >>
-
                                       tag!(&[OptionTag::End as u8]) >>
 
         (Message{
@@ -132,8 +130,8 @@ named!(pub parse_message<&[u8], Message>,
                 parameter_list,
                 dhcp_message,
                 dhcp_max_message_size,
-                renewal_time                    : None,
-                rebinding_time                  : None,
+                renewal_time,
+                rebinding_time,
                 class_id                        : None,
                 client_id,
                 // skipping RFC 2242 code 62 (NetWare/IP Domain Name)

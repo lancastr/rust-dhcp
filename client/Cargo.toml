@@ -9,6 +9,7 @@ tokio = "0.1.7"
 futures = "0.1.21"
 bytes = "0.4.8"
 eui48 = "0.3.2"
+chrono = "0.4.4"
 rand = "0.5.3"
 protocol = { path = "../protocol" }
 framed = { path = "../framed" }

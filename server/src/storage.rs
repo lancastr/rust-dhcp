@@ -12,6 +12,8 @@ use message::{
     Error,
 };
 
+const RENEWAL_TIME_FACTOR: f64      = 0.5;
+const REBINDING_TIME_FACTOR: f64    = 0.875;
 const DEFAULT_LEASE_TIME: u32       = 60 * 60 * 24; // 24 hours
 const MAX_LEASE_TIME: u32           = DEFAULT_LEASE_TIME * 7; // a week
 
@@ -46,9 +48,9 @@ impl Storage {
         Storage {
             static_address_range,
             dynamic_address_range,
+
             address_client_map      : HashMap::with_capacity(total_address_number),
             client_lease_map        : HashMap::with_capacity(total_address_number * 4),
-
             frozen_addresses        : Vec::new(),
         }
     }
@@ -112,16 +114,19 @@ impl Storage {
 
         // address allocation case 1
         if let Some(address) = self.client_current_address(&client_id) {
-            // lease time case 1
-            let lease_time = self.offer(address, &client_id, lease_time, reuse_lease_time);
+            if self.is_address_allocated_by(address, &client_id) {
+                // lease time case 1
+                let lease_time = self.offer(address, &client_id, lease_time, reuse_lease_time);
 
-            let offer = Offer{
-                address: Ipv4Addr::from(address),
-                lease_time,
-                message: "Offering the current address".to_owned(),
-            };
-            trace!("offering to client {:?} the current address: {:?}", client_id, offer);
-            return Ok(offer);
+                let offer = Offer {
+                    address: Ipv4Addr::from(address),
+                    lease_time,
+                    message: "Offering the current address".to_owned(),
+                };
+                trace!("offering to client {:?} the current address: {:?}", client_id, offer);
+                return Ok(offer);
+            }
+            trace!("the current address {} is not available", Ipv4Addr::from(address));
         } else {
             trace!("client {:?} has no current address", client_id);
         }
@@ -178,23 +183,27 @@ impl Storage {
 
     pub fn assign(
         &mut self,
-        client_id       : Option<Vec<u8>>,
-        address         : Option<Ipv4Addr>,
+        client_id           : Option<Vec<u8>>,
+        lease_time          : Option<u32>,
+        requested_address   : Option<Ipv4Addr>,
     ) -> Result<Ack, Error> {
         let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
 
-        let address = u32::from(address.ok_or(Error::AddressNotSpecified)?.to_owned());
+        let requested_address = u32::from(requested_address.ok_or(Error::AddressNotSpecified)?.to_owned());
 
         if let Some(ref mut lease) = self.client_lease_map.get_mut::<Vec<u8>>(client_id.as_ref()) {
             if lease.is_offered() {
-                if lease.address() != address {
+                if lease.address() != requested_address {
                     return Err(Error::InvalidAddress);
                 }
-                lease.assign();
+                let lease_time = cmp::min(lease_time.unwrap_or(lease.lease_time()), lease.lease_time());
+                lease.assign(lease_time);
                 return Ok(Ack{
-                    address     : Ipv4Addr::from(lease.address()),
-                    lease_time  : lease.lease_time(),
-                    message     : "Successfully assigned".to_owned(),
+                    address         : Ipv4Addr::from(lease.address()),
+                    lease_time      : lease.lease_time(),
+                    renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
+                    rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
+                    message         : "Successfully assigned".to_owned(),
                 });
             } else {
                 if lease.is_offer_expired() {
@@ -222,9 +231,11 @@ impl Storage {
             if lease.address() == address {
                 lease.renew(lease_time);
                 return Ok(Ack{
-                    address     : Ipv4Addr::from(lease.address()),
-                    lease_time  : lease.lease_time(),
-                    message     : "Your lease has been renewed".to_owned(),
+                    address         : Ipv4Addr::from(lease.address()),
+                    lease_time      : lease.lease_time(),
+                    renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
+                    rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
+                    message         : "Your lease has been renewed".to_owned(),
                 });
             } else {
                 return Err(Error::LeaseHasDifferentAddress);
@@ -277,9 +288,11 @@ impl Storage {
         if let Some(ref lease) = self.client_lease_map.get::<Vec<u8>>(client_id.as_ref()) {
             if lease.address() == address {
                 return Ok(Ack{
-                    address     : Ipv4Addr::from(lease.address()),
-                    lease_time  : lease.lease_time(),
-                    message     : "Your lease is active".to_owned(),
+                    address         : Ipv4Addr::from(lease.address()),
+                    lease_time      : lease.lease_time(),
+                    renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
+                    rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
+                    message         : "Your lease is active".to_owned(),
                 });
             } else {
                 return Err(Error::LeaseHasDifferentAddress);
@@ -356,6 +369,17 @@ impl Storage {
         }
         false
     }
+
+    fn is_address_allocated_by(&self, address: u32, client_id: &[u8]) -> bool {
+        if let Some(cid) = self.address_client_map.get(&address).map(|cid| cid.to_owned()) {
+            if cid == client_id {
+                if let Some(ref lease) = self.client_lease_map.get(&cid) {
+                    return lease.is_allocated();
+                }
+            }
+        }
+        false
+    }
 }
 
 #[cfg(test)]
@@ -368,21 +392,31 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = vec![1u8];
+        let client_id = Some(vec![1u8]);
 
         let offer1 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
-            None
+            Some(Ipv4Addr::new(192,168,0,11)),
+        ).unwrap();
+        let ack1 = storage.assign(
+            client_id.to_owned(),
+            Some(offer1.lease_time),
+            Some(offer1.address),
         ).unwrap();
 
         let offer2 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
-            Some(Ipv4Addr::new(192,168,0,166)),
+            Some(Ipv4Addr::new(192,168,0,12)),
+        ).unwrap();
+        let ack2 = storage.assign(
+            client_id.to_owned(),
+            Some(offer2.lease_time),
+            Some(offer2.address),
         ).unwrap();
 
-        assert_eq!(offer1.address, offer2.address);
+        assert_eq!(ack1.address, ack2.address);
     }
 
     #[test]
@@ -391,23 +425,32 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = vec![1u8];
+        let client_id = Some(vec![1u8]);
 
         let offer1 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
-            None
+            None,
         ).unwrap();
-
-        storage.deallocate(client_id, Some(offer1.address)).unwrap();
+        let ack1 = storage.assign(
+            client_id.to_owned(),
+            Some(offer1.lease_time),
+            Some(offer1.address),
+        ).unwrap();
+        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
 
         let offer2 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
             Some(Ipv4Addr::new(192,168,0,166)),
         ).unwrap();
+        let ack2 = storage.assign(
+            client_id.to_owned(),
+            Some(offer2.lease_time),
+            Some(offer2.address),
+        ).unwrap();
 
-        assert_eq!(offer1.address, offer2.address);
+        assert_eq!(ack1.address, ack2.address);
     }
 
     #[test]
@@ -416,26 +459,35 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = vec![1u8];
-        let another_client_id = vec![2u8];
+        let client_id = Some(vec![1u8]);
+        let another_client_id = Some(vec![2u8]);
 
         let current = Ipv4Addr::new(192,168,0,166);
 
         let offer1 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
             Some(current),
         ).unwrap();
-
-        storage.deallocate(client_id, Some(offer1.address)).unwrap();
+        let ack1 = storage.assign(
+            client_id.to_owned(),
+            Some(offer1.lease_time),
+            Some(offer1.address),
+        ).unwrap();
+        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
 
         let offer2 = storage.allocate(
-            another_client_id,
+            another_client_id.to_owned(),
             Some(1000),
             Some(current),
         ).unwrap();
+        let ack2 = storage.assign(
+            another_client_id.to_owned(),
+            Some(offer2.lease_time),
+            Some(offer2.address),
+        ).unwrap();
 
-        assert_eq!(offer1.address, offer2.address);
+        assert_eq!(ack1.address, ack2.address);
     }
 
     #[test]
@@ -444,33 +496,47 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = vec![1u8];
-        let another_client_id = vec![2u8];
+        let client_id = Some(vec![1u8]);
+        let another_client_id = Some(vec![2u8]);
 
         let current = Ipv4Addr::new(192,168,0,66);
         let requested = Ipv4Addr::new(192,168,0,77);
 
         let offer1 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
             Some(current),
         ).unwrap();
+        let ack1 = storage.assign(
+            client_id.to_owned(),
+            Some(offer1.lease_time),
+            Some(offer1.address),
+        ).unwrap();
+        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
 
-        storage.deallocate(client_id, Some(offer1.address)).unwrap();
-
-        let _ = storage.allocate(
-            another_client_id,
+        let offer2 = storage.allocate(
+            another_client_id.to_owned(),
             Some(1000),
             Some(current),
+        ).unwrap();
+        let _ack2 = storage.assign(
+            another_client_id.to_owned(),
+            Some(offer2.lease_time),
+            Some(offer2.address),
         ).unwrap();
 
         let offer3 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
             Some(requested),
         ).unwrap();
+        let ack3 = storage.assign(
+            client_id.to_owned(),
+            Some(offer3.lease_time),
+            Some(offer3.address),
+        ).unwrap();
 
-        assert_eq!(offer3.address, requested);
+        assert_eq!(ack3.address, requested);
     }
 
     #[test]
@@ -479,39 +545,58 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = vec![1u8];
-        let another_client_id = vec![2u8];
-        let yet_another_client_id = vec![3u8];
+        let client_id = Some(vec![1u8]);
+        let another_client_id = Some(vec![2u8]);
+        let yet_another_client_id = Some(vec![3u8]);
 
         let current = Ipv4Addr::new(192,168,0,66);
         let requested = Ipv4Addr::new(192,168,0,77);
 
         let offer1 = storage.allocate(
-            client_id,
+            client_id.to_owned(),
             Some(1000),
             Some(current),
         ).unwrap();
+        let ack1 = storage.assign(
+            client_id.to_owned(),
+            Some(offer1.lease_time),
+            Some(offer1.address),
+        ).unwrap();
+        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
 
-        storage.deallocate(client_id, Some(offer1.address)).unwrap();
-
-        let _ = storage.allocate(
-            another_client_id,
+        let offer2 = storage.allocate(
+            another_client_id.to_owned(),
             Some(1000),
             Some(current),
         ).unwrap();
-
-        let _ = storage.allocate(
-            yet_another_client_id,
-            Some(1000),
-            Some(requested),
+        let _ack2 = storage.assign(
+            another_client_id.to_owned(),
+            Some(offer2.lease_time),
+            Some(offer2.address),
         ).unwrap();
 
         let offer3 = storage.allocate(
-            client_id,
+            yet_another_client_id.to_owned(),
             Some(1000),
             Some(requested),
         ).unwrap();
+        let _ack3 = storage.assign(
+            yet_another_client_id.to_owned(),
+            Some(offer3.lease_time),
+            Some(offer3.address),
+        ).unwrap();
 
-        assert_ne!(offer3.address, requested);
+        let offer4 = storage.allocate(
+            client_id.to_owned(),
+            Some(1000),
+            Some(requested),
+        ).unwrap();
+        let ack4 = storage.assign(
+            client_id.to_owned(),
+            Some(offer4.lease_time),
+            Some(offer4.address),
+        ).unwrap();
+
+        assert_ne!(ack4.address, requested);
     }
 }

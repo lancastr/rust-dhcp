@@ -49,7 +49,7 @@ impl Lease {
         self.lease_time
     }
 
-    pub fn assign(&mut self) {
+    pub fn assign(&mut self, lease_time: u32) {
         // possible only in Offered state
         if !self.is_offered() {
             return;
@@ -57,7 +57,7 @@ impl Lease {
 
         self.state = State::Assigned;
         self.assigned_at = Utc::now().timestamp() as u32;
-
+        self.lease_time = lease_time;
         self.expires_at = self.assigned_at + self.lease_time;
     }
 
@@ -115,6 +115,9 @@ impl Lease {
     }
 
     pub fn is_offer_expired(&self) -> bool {
+        if !self.is_offered() {
+            return true;
+        }
         if self.offered_at == 0 {
             return false;
         }

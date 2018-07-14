@@ -14,9 +14,9 @@ use protocol::*;
 pub struct MessageBuilder {
     // header section
     client_hardware_address     : MacAddress,
-    client_id                   : Vec<u8>,
 
     // options section
+    client_id                   : Vec<u8>, // required
 }
 
 impl MessageBuilder {
@@ -33,6 +33,7 @@ impl MessageBuilder {
     pub fn discover(
         &self,
         transaction_id                  : u32,
+        is_broadcast                    : bool,
         address_request                 : Option<Ipv4Addr>,
         address_time                    : Option<u32>,
     ) -> Message {
@@ -50,7 +51,7 @@ impl MessageBuilder {
 
             transaction_id,
             seconds                     : 0u16,
-            is_broadcast                : true,
+            is_broadcast,
 
             client_ip_address           : Ipv4Addr::new(0,0,0,0),
             your_ip_address             : Ipv4Addr::new(0,0,0,0),
@@ -68,6 +69,7 @@ impl MessageBuilder {
     pub fn request_selecting(
         &self,
         transaction_id                  : u32,
+        is_broadcast                    : bool,
         address_request                 : Ipv4Addr,
         address_time                    : Option<u32>,
         dhcp_server_id                  : Ipv4Addr,
@@ -87,7 +89,7 @@ impl MessageBuilder {
 
             transaction_id,
             seconds                     : 0u16,
-            is_broadcast                : true,
+            is_broadcast,
 
             client_ip_address           : Ipv4Addr::new(0,0,0,0),
             your_ip_address             : Ipv4Addr::new(0,0,0,0),
@@ -105,6 +107,7 @@ impl MessageBuilder {
     pub fn request_init_reboot(
         &self,
         transaction_id                  : u32,
+        is_broadcast                    : bool,
         address_request                 : Ipv4Addr,
         address_time                    : Option<u32>,
     ) -> Message {
@@ -122,7 +125,7 @@ impl MessageBuilder {
 
             transaction_id,
             seconds                     : 0u16,
-            is_broadcast                : true,
+            is_broadcast,
 
             client_ip_address           : Ipv4Addr::new(0,0,0,0),
             your_ip_address             : Ipv4Addr::new(0,0,0,0),
@@ -140,6 +143,7 @@ impl MessageBuilder {
     pub fn request_bound_renewing_rebinding(
         &self,
         transaction_id                  : u32,
+        is_broadcast                    : bool,
         client_ip_address               : Ipv4Addr,
         address_time                    : Option<u32>,
     ) -> Message {
@@ -156,7 +160,7 @@ impl MessageBuilder {
 
             transaction_id,
             seconds                     : 0u16,
-            is_broadcast                : true,
+            is_broadcast,
 
             client_ip_address,
             your_ip_address             : Ipv4Addr::new(0,0,0,0),
@@ -174,6 +178,7 @@ impl MessageBuilder {
     pub fn inform(
         &self,
         transaction_id                  : u32,
+        is_broadcast                    : bool,
         client_ip_address               : Ipv4Addr,
     ) -> Message {
         let mut options = Options::new();
@@ -188,7 +193,7 @@ impl MessageBuilder {
 
             transaction_id,
             seconds                     : 0u16,
-            is_broadcast                : true,
+            is_broadcast,
 
             client_ip_address,
             your_ip_address             : Ipv4Addr::new(0,0,0,0),

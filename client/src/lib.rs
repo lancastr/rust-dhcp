@@ -6,6 +6,7 @@ extern crate tokio;
 #[macro_use] extern crate futures;
 extern crate bytes;
 extern crate eui48;
+extern crate chrono;
 extern crate rand;
 
 extern crate protocol;

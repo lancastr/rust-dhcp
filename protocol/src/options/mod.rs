@@ -6,7 +6,6 @@ pub use self::message_type::MessageType;
 
 use std::net::Ipv4Addr;
 
-#[derive(Debug)]
 pub struct Options {
     /*
     RFC 2132
