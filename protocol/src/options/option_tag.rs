@@ -1,5 +1,7 @@
-#[allow(dead_code)]
+//! OptionTag module
+
 #[derive(Debug)]
+/// DHCP options codes (RFC 2132 only).
 pub enum OptionTag {
     Pad = 0,
 

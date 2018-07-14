@@ -1,3 +1,5 @@
+//! A builder for common DHCP client messages
+
 use std::{
     net::{
         Ipv4Addr,
@@ -11,15 +13,16 @@ use eui48::{
 
 use protocol::*;
 
+/// Builds common client messages with some parameters.
 pub struct MessageBuilder {
-    // header section
+    /// Mandatory `MAC-48` address.
     client_hardware_address     : MacAddress,
-
-    // options section
-    client_id                   : Vec<u8>, // required
+    /// Is set explicitly by user or defaulted to `client_hardware_address` bytes.
+    client_id                   : Vec<u8>,
 }
 
 impl MessageBuilder {
+    /// Creates a builder with message parameters which will not be changed.
     pub fn new(
         client_hardware_address : MacAddress,
         client_id               : Vec<u8>,
@@ -30,6 +33,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a general `DHCPDISCOVER` message.
     pub fn discover(
         &self,
         transaction_id                  : u32,
@@ -66,6 +70,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPREQUEST` in `SELECTING` state.
     pub fn request_selecting(
         &self,
         transaction_id                  : u32,
@@ -104,6 +109,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPREQUEST` in `INIT-REBOOT` state.
     pub fn request_init_reboot(
         &self,
         transaction_id                  : u32,
@@ -140,6 +146,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPREQUEST` in `BOUND`, `RENEWING` or `REBINDING` state.
     pub fn request_bound_renewing_rebinding(
         &self,
         transaction_id                  : u32,
@@ -175,6 +182,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a general `DHCPINFORM` message.
     pub fn inform(
         &self,
         transaction_id                  : u32,
@@ -208,6 +216,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a general `DHCPRELEASE` message.
     pub fn release(
         &self,
         transaction_id                  : u32,
@@ -244,6 +253,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a general `DHCPDECLINE` message.
     pub fn decline(
         &self,
         transaction_id                  : u32,

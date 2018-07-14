@@ -1,4 +1,7 @@
+//! OperationCode module
+
 #[derive(Debug, Clone, Copy)]
+/// DHCP opcode.
 pub enum OperationCode {
     Undefined,
     BootRequest,

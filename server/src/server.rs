@@ -1,3 +1,5 @@
+//! Server module
+
 use std::{
     ops::Range,
     net::{
@@ -13,7 +15,7 @@ use tokio::{
 };
 use hostname;
 
-use protocol::{self, *};
+use protocol;
 use framed::*;
 use message::{
     self,
@@ -21,6 +23,7 @@ use message::{
 };
 use storage::Storage;
 
+/// The struct implementing the `Future` trait.
 pub struct Server {
     socket                  : DhcpFramed,
     message_builder         : MessageBuilder,
@@ -28,24 +31,40 @@ pub struct Server {
 }
 
 impl Server {
-    //
-    // server_name:
-    //     Some(string) if you want to specify the server name manually
-    //     None to get the hostname automatically
-    //
-    // *_address_range:
-    //     are not inclusive yet, but may become so later
-    //
+    /// Creates a server future
+    ///
+    /// * `server_ip_address`
+    /// The address clients will receive in the `server_ip_address` field.
+    /// Is usually set to needed network interface address.
+    ///
+    /// * `server_name`
+    /// May be explicitly set by a server user.
+    /// Otherwise is defaulted to the machine hostname.
+    /// If the hostname cannot be get, remains empty.
+    ///
+    /// * `static_address_range`
+    /// Non-inclusive IPv4 address range.
+    ///
+    /// * `dynamic_address_range`
+    /// Non-inclusive IPv4 address range.
+    ///
+    /// * `subnet_mask`
+    /// Static data for clients.
+    ///
+    /// * `routers`
+    /// Static data for clients.
+    ///
+    /// * `domain_name_servers`
+    /// Static data for clients.
+    ///
+    /// * `static_routes`
+    /// Static data for clients.
+    ///
     pub fn new(
-        // header fields for the message builder
         server_ip_address       : Ipv4Addr,
         server_name             : Option<String>,
-
-        // address ranges for the storage
         static_address_range    : Range<Ipv4Addr>,
         dynamic_address_range   : Range<Ipv4Addr>,
-
-        // option fields for the message builder
         subnet_mask             : Ipv4Addr,
         routers                 : Vec<Ipv4Addr>,
         domain_name_servers     : Vec<Ipv4Addr>,
@@ -81,51 +100,43 @@ impl Future for Server {
     type Item = ();
     type Error = io::Error;
 
-    //
-    // unwrap()'s in this code are safe.
-    // All the validation is done in the protocol crate.
-    //
+    /// Works infinite time.
     fn poll(&mut self) -> Poll<(), io::Error> {
+        use protocol::MessageType::*;
+
         loop {
             if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
 
             if let Some((mut addr, request)) = try_ready!(self.socket.poll()) {
-                // report and drop invalid messages
-                info!("{:?} from {}:\n{}", request.options.dhcp_message_type.unwrap_or(MessageType::Undefined), addr, request);
+                info!("Request from {}:\n{}", addr, request);
                 if let Err(protocol::Error::Validation) = request.validate() {
-                    warn!("Invalid request from {}:\n{}", addr, request);
+                    warn!("The request is invalid");
                     continue;
                 }
+                let dhcp_message_type = request.options.dhcp_message_type.expect("The is an error in DHCP message validation");
 
                 /*
                 RFC 2131 §4.1
-                If the 'giaddr' field in a DHCP message from a client is non-zero,
-                the server sends any return messages to the 'DHCP server' port on the
-                BOOTP relay agent whose address appears in 'giaddr'. If the 'giaddr'
-                field is zero and the 'ciaddr' field is nonzero, then the server
-                unicasts DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
-                If 'giaddr' is zero and 'ciaddr' is zero, and the broadcast bit is
-                set, then the server broadcasts DHCPOFFER and DHCPACK messages to
-                0xffffffff. If the broadcast bit is not set and 'giaddr' is zero and
-                'ciaddr' is zero, then the server unicasts DHCPOFFER and DHCPACK
-                messages to the client's hardware address and 'yiaddr' address.  In
-                all cases, when 'giaddr' is zero, the server broadcasts any DHCPNAK
-                messages to 0xffffffff.
-
-                Note: SHOULD also send IP datagrams if the broadcast bit is not set (not implemented)
+                If the  'ciaddr' field is nonzero, then the server unicasts
+                DHCPOFFER and DHCPACK messages to the address in 'ciaddr'.
+                If 'ciaddr' is zero, and the broadcast bit is set, then the server
+                broadcasts DHCPOFFER and DHCPACK messages to 0xffffffff. If the
+                broadcast bit is not set and the 'ciaddr' is zero, then the server
+                unicasts DHCPOFFER and DHCPACK messages to the client's hardware
+                address and 'yiaddr' address. In all cases, when 'giaddr' is zero,
+                the server broadcasts any DHCPNAK messages to 0xffffffff.
                 */
-
-                // configuration through gateways not required and not supported
-                // if !request.gateway_ip_address.is_unspecified() {
-                //     addr = SocketAddr::new(IpAddr::V4(request.gateway_ip_address), DHCP_PORT_SERVER)
-                // }
-
                 if !request.client_ip_address.is_unspecified() {
                     addr = SocketAddr::new(IpAddr::V4(request.client_ip_address), DHCP_PORT_CLIENT)
                 }
 
-                match request.options.dhcp_message_type {
-                    Some(MessageType::DhcpDiscover) => {
+                let client_id = match request.options.client_id {
+                    Some(ref client_id) => client_id.as_ref(),
+                    None => request.client_hardware_address.as_bytes(),
+                };
+
+                match dhcp_message_type {
+                    DhcpDiscover => {
                         /*
                         RFC 2131 §4.3.1
                         When a server receives a DHCPDISCOVER message from a client, the
@@ -134,13 +145,13 @@ impl Future for Server {
                         the system administrator.
                         */
                         match self.storage.allocate(
-                            request.options.client_id.to_owned(),
+                            client_id,
                             request.options.address_time,
                             request.options.address_request,
                         ) {
                             Ok(offer) => {
                                 let response = self.message_builder.dhcp_discover_to_offer(&request, &offer);
-                                trace!("DhcpOffer to {}:\n{}", addr, response);
+                                info!("DHCPOFFER to {}:\n{}", addr, response);
                                 if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                                     panic!("Must wait for poll_complete first");
                                 }
@@ -148,7 +159,7 @@ impl Future for Server {
                             Err(error) => warn!("Address allocation error: {}", error.to_string()),
                         };
                     },
-                    Some(MessageType::DhcpRequest) => {
+                    DhcpRequest => {
                         /*
                         RFC 2131 §4.3.2
                         A DHCPREQUEST message may come from a client responding to a
@@ -177,13 +188,13 @@ impl Future for Server {
                         // the client is in SELECTING state
                         if request.options.dhcp_server_id.is_some() {
                             match self.storage.assign(
-                                request.options.client_id.to_owned(),
+                                client_id,
                                 request.options.address_time,
                                 request.options.address_request,
                             ) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                    trace!("DhcpAck to {}:\n{}", addr, response);
+                                    info!("DHCPACK to {}:\n{}", addr, response);
                                     if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                                         panic!("Must wait for poll_complete first");
                                     }
@@ -191,7 +202,7 @@ impl Future for Server {
                                 Err(error) => {
                                     warn!("Address assignment error: {}", error.to_string());
                                     let response = self.message_builder.dhcp_request_to_nak(&request, &error);
-                                    trace!("DhcpNak to {}:\n{}", addr, response);
+                                    info!("DHCPNAK to {}:\n{}", addr, response);
                                     if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                                         panic!("Must wait for poll_complete first");
                                     }
@@ -203,12 +214,12 @@ impl Future for Server {
                         // the client is in INIT-REBOOT state
                         if request.client_ip_address.is_unspecified() {
                             match self.storage.check(
-                                request.options.client_id.to_owned(),
-                            request.options.address_request,
+                                client_id,
+                                request.options.address_request,
                             ) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                    trace!("DhcpAck to {}:\n{}", addr, response);
+                                    info!("DHCPACK to {}:\n{}", addr, response);
                                     if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                                         panic!("Must wait for poll_complete first");
                                     }
@@ -217,7 +228,7 @@ impl Future for Server {
                                     warn!("Address checking error: {}", error.to_string());
                                     if let message::Error::LeaseHasDifferentAddress = error {
                                         let response = self.message_builder.dhcp_request_to_nak(&request, &error);
-                                        trace!("DhcpNak to {}:\n{}", addr, response);
+                                        info!("DHCPNAK to {}:\n{}", addr, response);
                                         if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                                             panic!("Must wait for poll_complete first");
                                         }
@@ -234,13 +245,13 @@ impl Future for Server {
 
                         // the client is in RENEWING or REBINDING state
                         match self.storage.renew(
-                            request.options.client_id.to_owned(),
+                            client_id,
                             &request.client_ip_address,
                             request.options.address_time,
                         ) {
                             Ok(ack) => {
                                 let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                trace!("DhcpAck to {}:\n{}", addr, response);
+                                info!("DHCPACK to {}:\n{}", addr, response);
                                 if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                                     panic!("Must wait for poll_complete first");
                                 }
@@ -248,7 +259,7 @@ impl Future for Server {
                             Err(error) => warn!("Address checking error: {}", error.to_string()),
                         }
                     },
-                    Some(MessageType::DhcpDecline) => {
+                    DhcpDecline => {
                         /*
                         RFC 2131 §4.3.3
                         If the server receives a DHCPDECLINE message, the client has
@@ -258,14 +269,14 @@ impl Future for Server {
                         a possible configuration problem.
                         */
                         match self.storage.freeze(
-                            request.options.client_id.to_owned(),
+                            client_id,
                             request.options.address_request,
                         ) {
                             Ok(_) => info!("Address {:?} has been marked as unavailable", request.options.address_request),
                             Err(error) => warn!("Address freezing error: {}", error.to_string()),
                         };
                     },
-                    Some(MessageType::DhcpRelease) => {
+                    DhcpRelease => {
                         /*
                         RFC 2131 §4.3.4
                         Upon receipt of a DHCPRELEASE message, the server marks the network
@@ -274,14 +285,14 @@ impl Future for Server {
                         subsequent requests from the client.
                         */
                         match self.storage.deallocate(
-                            request.options.client_id.to_owned(),
+                            client_id,
                             request.options.address_request,
                         ) {
                             Ok(_) => info!("Address {:?} has been released", request.options.address_request),
                             Err(error) => warn!("Address releasing error: {}", error.to_string()),
                         };
                     },
-                    Some(MessageType::DhcpInform) => {
+                    DhcpInform => {
                         /*
                         RFC 2131 §4.3.5
                         The server responds to a DHCPINFORM message by sending a DHCPACK
@@ -290,7 +301,8 @@ impl Future for Server {
                         to the client and SHOULD NOT fill in 'yiaddr'.
                         */
                         let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
-                        trace!("DhcpAck to {}:\n{}", addr, response);
+                        info!("Address {:?} has been taken by some client manually", request.options.address_request);
+                        info!("DHCPACK to {}:\n{}", addr, response);
                         if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
                             panic!("Must wait for poll_complete first");
                         }

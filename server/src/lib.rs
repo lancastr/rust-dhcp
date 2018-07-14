@@ -1,3 +1,5 @@
+//! The original Rust DHCP client implementation
+
 mod server;
 mod message;
 mod storage;

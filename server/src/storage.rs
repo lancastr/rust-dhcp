@@ -1,3 +1,5 @@
+//! Storage module
+
 use std::{
     cmp,
     ops::Range,
@@ -12,22 +14,34 @@ use message::{
     Error,
 };
 
+/// T1 RFC 2131 suggestion.
 const RENEWAL_TIME_FACTOR: f64      = 0.5;
+/// T2 RFC 2131 suggestion.
 const REBINDING_TIME_FACTOR: f64    = 0.875;
-const DEFAULT_LEASE_TIME: u32       = 60 * 60 * 24; // 24 hours
-const MAX_LEASE_TIME: u32           = DEFAULT_LEASE_TIME * 7; // a week
+/// 24 hours.
+const DEFAULT_LEASE_TIME: u32       = 60 * 60 * 24;
+/// 1 week.
+const MAX_LEASE_TIME: u32           = 60 * 60 * 24 * 7;
 
+/// DHCP persistent lease database.
+///
+/// `Ipv4Addr` is represented as `u32` for better usability and performance.
 pub struct Storage {
+    /// Non-inclusive static address range.
     static_address_range    : Range<u32>,
+    /// Non-inclusive dynamic address range.
     dynamic_address_range   : Range<u32>,
-
-    address_client_map      : HashMap<u32, Vec<u8>>, // IPv4 -> client_id
-    client_lease_map        : HashMap<Vec<u8>, Lease>, // client_id -> Lease
-    frozen_addresses        : Vec<u32>, // reported by DHCPDECLINE
+    /// `IPv4` to `client_id` mapping.
+    address_client_map      : HashMap<u32, Vec<u8>>,
+    /// `client_id` to `Lease` mapping.
+    client_lease_map        : HashMap<Vec<u8>, Lease>,
+    /// `IPv4` addresses reported by `DHCPDECLINE`.
+    frozen_addresses        : Vec<u32>,
 }
 
 #[allow(dead_code)]
 impl Storage {
+    /// Creates a new storage with specified static and dynamic address pools.
     pub fn new(
         static_address_range    : Range<Ipv4Addr>,
         dynamic_address_range   : Range<Ipv4Addr>,
@@ -48,63 +62,61 @@ impl Storage {
         Storage {
             static_address_range,
             dynamic_address_range,
-
             address_client_map      : HashMap::with_capacity(total_address_number),
             client_lease_map        : HashMap::with_capacity(total_address_number * 4),
             frozen_addresses        : Vec::new(),
         }
     }
 
-    //
-    // Lease time calculation algorithm:
-    //     RFC 2132 §4.3.1
-    //     The server must also choose an expiration time for the lease, as follows:
-    //
-    //     1. IF the client has not requested a specific lease in the
-    //        DHCPDISCOVER message and the client already has an assigned network
-    //        address, the server returns the lease expiration time previously
-    //        assigned to that address (note that the client must explicitly
-    //        request a specific lease to extend the expiration time on a
-    //        previously assigned address), ELSE
-    //
-    //     2. IF the client has not requested a specific lease in the
-    //        DHCPDISCOVER message and the client does not have an assigned
-    //        network address, the server assigns a locally configured default
-    //        lease time, ELSE
-    //
-    //     3. IF the client has requested a specific lease in the DHCPDISCOVER
-    //        message (regardless of whether the client has an assigned network
-    //        address), the server may choose either to return the requested
-    //        lease (if the lease is acceptable to local policy) or select
-    //        another lease.
-    //
-    // Address allocation algorithm:
-    //     RFC 2132 §4.3.1
-    //     If an address is available, the new address SHOULD be chosen as follows:
-    //
-    //     1. The client's current address as recorded in the client's current
-    //        binding, ELSE
-    //
-    //     2. The client's previous address as recorded in the client's (now
-    //        expired or released) binding, if that address is in the server's
-    //        pool of available addresses and not already allocated, ELSE
-    //
-    //     3. The address requested in the 'Requested IP Address' option, if that
-    //        address is valid and not already allocated, ELSE
-    //
-    //     4. A new address allocated from the server's pool of available
-    //        addresses; the address is selected based on the subnet from which
-    //        the message was received (if 'giaddr' is 0) or on the address of
-    //        the relay agent that forwarded the message ('giaddr' when not 0).
-    //
+    /// Allocates an address.
+    ///
+    /// Address allocation algorithm:
+    ///     RFC 2132 §4.3.1
+    ///     If an address is available, the new address SHOULD be chosen as follows:
+    ///
+    ///     1. The client's current address as recorded in the client's current
+    ///        binding, ELSE
+    ///
+    ///     2. The client's previous address as recorded in the client's (now
+    ///        expired or released) binding, if that address is in the server's
+    ///        pool of available addresses and not already allocated, ELSE
+    ///
+    ///     3. The address requested in the 'Requested IP Address' option, if that
+    ///        address is valid and not already allocated, ELSE
+    ///
+    ///     4. A new address allocated from the server's pool of available
+    ///        addresses; the address is selected based on the subnet from which
+    ///        the message was received (if 'giaddr' is 0) or on the address of
+    ///        the relay agent that forwarded the message ('giaddr' when not 0).
+    ///
+    /// Lease time calculation algorithm:
+    ///     RFC 2132 §4.3.1
+    ///     The server must also choose an expiration time for the lease, as follows:
+    ///
+    ///     1. IF the client has not requested a specific lease in the
+    ///        DHCPDISCOVER message and the client already has an assigned network
+    ///        address, the server returns the lease expiration time previously
+    ///        assigned to that address (note that the client must explicitly
+    ///        request a specific lease to extend the expiration time on a
+    ///        previously assigned address), ELSE
+    ///
+    ///     2. IF the client has not requested a specific lease in the
+    ///        DHCPDISCOVER message and the client does not have an assigned
+    ///        network address, the server assigns a locally configured default
+    ///        lease time, ELSE
+    ///
+    ///     3. IF the client has requested a specific lease in the DHCPDISCOVER
+    ///        message (regardless of whether the client has an assigned network
+    ///        address), the server may choose either to return the requested
+    ///        lease (if the lease is acceptable to local policy) or select
+    ///        another lease.
+    ///
     pub fn allocate(
         &mut self,
-        client_id           : Option<Vec<u8>>,
+        client_id           : &[u8],
         lease_time          : Option<u32>,
         requested_address   : Option<Ipv4Addr>,
     ) -> Result<Offer, Error> {
-        let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
-
         // for lease time case 1
         let reuse_lease_time = lease_time.is_none();
         // lease time case 2 or 3
@@ -113,85 +125,84 @@ impl Storage {
         let requested_address = requested_address.map(|address| u32::from(address));
 
         // address allocation case 1
-        if let Some(address) = self.client_current_address(&client_id) {
-            if self.is_address_allocated_by(address, &client_id) {
+        if let Some(address) = self.client_current_address(client_id) {
+            if self.is_address_allocated_by(address, client_id) {
                 // lease time case 1
-                let lease_time = self.offer(address, &client_id, lease_time, reuse_lease_time);
+                let lease_time = self.offer(address, client_id, lease_time, reuse_lease_time);
 
                 let offer = Offer {
                     address: Ipv4Addr::from(address),
                     lease_time,
                     message: "Offering the current address".to_owned(),
                 };
-                trace!("offering to client {:?} the current address: {:?}", client_id, offer);
+                trace!("Offering to client {:?} the current address: {:?}", client_id, offer);
                 return Ok(offer);
             }
-            trace!("the current address {} is not available", Ipv4Addr::from(address));
+            trace!("The current address {} is not available", Ipv4Addr::from(address));
         } else {
-            trace!("client {:?} has no current address", client_id);
+            trace!("Client {:?} has no current address", client_id);
         }
 
         // address allocation case 2
-        if let Some(address) = self.client_last_address(&client_id) {
+        if let Some(address) = self.client_last_address(client_id) {
             if self.is_address_available(address) {
-                let lease_time = self.offer(address, &client_id, lease_time, false);
+                let lease_time = self.offer(address, client_id, lease_time, false);
 
                 let offer = Offer{
                     address: Ipv4Addr::from(address),
                     lease_time,
                     message: "Offering the previous address".to_owned(),
                 };
-                trace!("offering to client {:?} the previous address {:?}", client_id, offer);
+                trace!("Offering to client {:?} the previous address {:?}", client_id, offer);
                 return Ok(offer);
             }
-            trace!("the previous address {} is not available", Ipv4Addr::from(address));
+            trace!("The previous address {} is not available", Ipv4Addr::from(address));
         } else {
-            trace!("client {:?} has never had an address", client_id);
+            trace!("Client {:?} has never had an address", client_id);
         }
 
         // address allocation case 3
         if let Some(address) = requested_address {
             if self.is_address_available(address) && self.is_address_in_static_pool(address) {
-                let lease_time = self.offer(address, &client_id, lease_time, false);
+                let lease_time = self.offer(address, client_id, lease_time, false);
 
                 let offer = Offer{
                     address: Ipv4Addr::from(address),
                     lease_time,
                     message: "Offering the requested address".to_owned(),
                 };
-                trace!("offering to client {:?} the requested address: {:?}", client_id, offer);
+                trace!("Offering to client {:?} the requested address: {:?}", client_id, offer);
                 return Ok(offer);
             }
-            trace!("the requested address {} is not available", Ipv4Addr::from(address));
+            trace!("The requested address {} is not available", Ipv4Addr::from(address));
         } else {
-            trace!("client {:?} does not request an address", client_id);
+            trace!("Client {:?} does not request an address", client_id);
         }
 
         // address allocation case 4
         // giaddr stuff not implemented
         let address = self.get_dynamic_available().ok_or(Error::DynamicPoolExhausted)?;
-        let lease_time = self.offer(address, &client_id, lease_time, false);
+        let lease_time = self.offer(address, client_id, lease_time, false);
 
         let offer = Offer{
             address: Ipv4Addr::from(address),
             lease_time,
             message: "Offering an address from the dynamic pool".to_owned(),
         };
-        trace!("offering to client {:?} an address from the dynamic pool: {:?}", client_id, offer);
+        trace!("Offering to client {:?} an address from the dynamic pool: {:?}", client_id, offer);
         Ok(offer)
     }
 
+    /// Assigns a previously offered address.
     pub fn assign(
         &mut self,
-        client_id           : Option<Vec<u8>>,
+        client_id           : &[u8],
         lease_time          : Option<u32>,
         requested_address   : Option<Ipv4Addr>,
     ) -> Result<Ack, Error> {
-        let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
-
         let requested_address = u32::from(requested_address.ok_or(Error::AddressNotSpecified)?.to_owned());
 
-        if let Some(ref mut lease) = self.client_lease_map.get_mut::<Vec<u8>>(client_id.as_ref()) {
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(client_id) {
             if lease.is_offered() {
                 if lease.address() != requested_address {
                     return Err(Error::InvalidAddress);
@@ -216,18 +227,17 @@ impl Storage {
         Err(Error::OfferNotFound)
     }
 
+    /// Renewes a previously assigned address.
     pub fn renew(
         &mut self,
-        client_id       : Option<Vec<u8>>,
-        address         : &Ipv4Addr,
-        lease_time      : Option<u32>,
+        client_id           : &[u8],
+        address             : &Ipv4Addr,
+        lease_time          : Option<u32>,
     ) -> Result<Ack, Error> {
-        let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
-
         let address = u32::from(address.to_owned());
         let lease_time = cmp::min(lease_time.unwrap_or(DEFAULT_LEASE_TIME), MAX_LEASE_TIME);
 
-        if let Some(ref mut lease) = self.client_lease_map.get_mut::<Vec<u8>>(client_id.as_ref()) {
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(client_id) {
             if lease.address() == address {
                 lease.renew(lease_time);
                 return Ok(Ack{
@@ -244,48 +254,45 @@ impl Storage {
         Err(Error::LeaseNotFound)
     }
 
+    /// Deallocates a previously offered or assigned address.
     pub fn deallocate(
         &mut self,
-        client_id   : Option<Vec<u8>>,
-        address     : Option<Ipv4Addr>,
+        client_id           : &[u8],
+        address             : Option<Ipv4Addr>,
     ) -> Result<(), Error> {
-        let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
-
         let address = u32::from(address.ok_or(Error::AddressNotSpecified)?.to_owned());
 
         self.address_client_map.remove(&address);
-        if let Some(ref mut lease) = self.client_lease_map.get_mut::<Vec<u8>>(client_id.as_ref()) {
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(client_id) {
             lease.release();
         }
         Ok(())
     }
 
+    /// Freezes an address as a response to a `DHCPDECLINE` message.
     pub fn freeze(
         &mut self,
-        client_id   : Option<Vec<u8>>,
-        address     : Option<Ipv4Addr>,
+        client_id           : &[u8],
+        address             : Option<Ipv4Addr>,
     ) -> Result<(), Error> {
-        let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
-
         let address = u32::from(address.ok_or(Error::AddressNotSpecified)?.to_owned());
 
         self.address_client_map.remove(&address);
-        if let Some(ref mut lease) = self.client_lease_map.get_mut::<Vec<u8>>(client_id.as_ref()) {
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(client_id) {
             lease.release();
         }
         Ok(())
     }
 
+    /// Checks the address of a client in `INIT-REBOOT` state.
     pub fn check(
         &self,
-        client_id   : Option<Vec<u8>>,
-        address     : Option<Ipv4Addr>,
+        client_id           : &[u8],
+        address             : Option<Ipv4Addr>,
     ) -> Result<Ack, Error> {
-        let client_id = client_id.ok_or(Error::ClientIdNotSpecified)?;
-
         let address = u32::from(address.ok_or(Error::AddressNotSpecified)?.to_owned());
 
-        if let Some(ref lease) = self.client_lease_map.get::<Vec<u8>>(client_id.as_ref()) {
+        if let Some(ref lease) = self.client_lease_map.get(client_id) {
             if lease.address() == address {
                 return Ok(Ack{
                     address         : Ipv4Addr::from(lease.address()),
@@ -308,7 +315,7 @@ impl Storage {
         lease_time          : u32,
         reuse_lease_time    : bool,
     ) -> u32 {
-        self.address_client_map.insert(address, client_id.to_owned());
+        self.address_client_map.insert(address, client_id.to_vec());
         let mut lease_time = lease_time;
         if reuse_lease_time {
             if let Some(ref lease) = self.client_lease_map.get_mut(client_id) {
@@ -392,26 +399,26 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = Some(vec![1u8]);
+        let client_id = vec![1u8];
 
         let offer1 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(Ipv4Addr::new(192,168,0,11)),
         ).unwrap();
         let ack1 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer1.lease_time),
             Some(offer1.address),
         ).unwrap();
 
         let offer2 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(Ipv4Addr::new(192,168,0,12)),
         ).unwrap();
         let ack2 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer2.lease_time),
             Some(offer2.address),
         ).unwrap();
@@ -425,27 +432,27 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = Some(vec![1u8]);
+        let client_id = vec![1u8];
 
         let offer1 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             None,
         ).unwrap();
         let ack1 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer1.lease_time),
             Some(offer1.address),
         ).unwrap();
-        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
+        storage.deallocate(client_id.as_ref(), Some(ack1.address)).unwrap();
 
         let offer2 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(Ipv4Addr::new(192,168,0,166)),
         ).unwrap();
         let ack2 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer2.lease_time),
             Some(offer2.address),
         ).unwrap();
@@ -459,30 +466,30 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = Some(vec![1u8]);
-        let another_client_id = Some(vec![2u8]);
+        let client_id = vec![1u8];
+        let another_client_id = vec![2u8];
 
         let current = Ipv4Addr::new(192,168,0,166);
 
         let offer1 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(current),
         ).unwrap();
         let ack1 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer1.lease_time),
             Some(offer1.address),
         ).unwrap();
-        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
+        storage.deallocate(client_id.as_ref(), Some(ack1.address)).unwrap();
 
         let offer2 = storage.allocate(
-            another_client_id.to_owned(),
+            another_client_id.as_ref(),
             Some(1000),
             Some(current),
         ).unwrap();
         let ack2 = storage.assign(
-            another_client_id.to_owned(),
+            another_client_id.as_ref(),
             Some(offer2.lease_time),
             Some(offer2.address),
         ).unwrap();
@@ -496,42 +503,42 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = Some(vec![1u8]);
-        let another_client_id = Some(vec![2u8]);
+        let client_id = vec![1u8];
+        let another_client_id = vec![2u8];
 
         let current = Ipv4Addr::new(192,168,0,66);
         let requested = Ipv4Addr::new(192,168,0,77);
 
         let offer1 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(current),
         ).unwrap();
         let ack1 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer1.lease_time),
             Some(offer1.address),
         ).unwrap();
-        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
+        storage.deallocate(client_id.as_ref(), Some(ack1.address)).unwrap();
 
         let offer2 = storage.allocate(
-            another_client_id.to_owned(),
+            another_client_id.as_ref(),
             Some(1000),
             Some(current),
         ).unwrap();
         let _ack2 = storage.assign(
-            another_client_id.to_owned(),
+            another_client_id.as_ref(),
             Some(offer2.lease_time),
             Some(offer2.address),
         ).unwrap();
 
         let offer3 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(requested),
         ).unwrap();
         let ack3 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer3.lease_time),
             Some(offer3.address),
         ).unwrap();
@@ -545,54 +552,54 @@ mod tests {
             Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
             Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
         );
-        let client_id = Some(vec![1u8]);
-        let another_client_id = Some(vec![2u8]);
-        let yet_another_client_id = Some(vec![3u8]);
+        let client_id = vec![1u8];
+        let another_client_id = vec![2u8];
+        let yet_another_client_id = vec![3u8];
 
         let current = Ipv4Addr::new(192,168,0,66);
         let requested = Ipv4Addr::new(192,168,0,77);
 
         let offer1 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(current),
         ).unwrap();
         let ack1 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer1.lease_time),
             Some(offer1.address),
         ).unwrap();
-        storage.deallocate(client_id.to_owned(), Some(ack1.address)).unwrap();
+        storage.deallocate(client_id.as_ref(), Some(ack1.address)).unwrap();
 
         let offer2 = storage.allocate(
-            another_client_id.to_owned(),
+            another_client_id.as_ref(),
             Some(1000),
             Some(current),
         ).unwrap();
         let _ack2 = storage.assign(
-            another_client_id.to_owned(),
+            another_client_id.as_ref(),
             Some(offer2.lease_time),
             Some(offer2.address),
         ).unwrap();
 
         let offer3 = storage.allocate(
-            yet_another_client_id.to_owned(),
+            yet_another_client_id.as_ref(),
             Some(1000),
             Some(requested),
         ).unwrap();
         let _ack3 = storage.assign(
-            yet_another_client_id.to_owned(),
+            yet_another_client_id.as_ref(),
             Some(offer3.lease_time),
             Some(offer3.address),
         ).unwrap();
 
         let offer4 = storage.allocate(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(1000),
             Some(requested),
         ).unwrap();
         let ack4 = storage.assign(
-            client_id.to_owned(),
+            client_id.as_ref(),
             Some(offer4.lease_time),
             Some(offer4.address),
         ).unwrap();

@@ -1,3 +1,5 @@
+//! A builder for common DHCP server messages
+
 mod error;
 mod offer;
 mod ack;
@@ -16,19 +18,24 @@ pub use self::{
     error::Error,
 };
 
+/// Builds common server messages with some parameters.
 pub struct MessageBuilder {
-    // header section
+    /// Sent to clients in `server_ip_address` field.
     server_ip_address       : Ipv4Addr,
+    /// Sent to clients in `server_name` field.
     server_name             : String,
-
-    // options section
+    /// Sent to clients in options.
     subnet_mask             : Ipv4Addr,
+    /// Sent to clients in options.
     routers                 : Vec<Ipv4Addr>,
+    /// Sent to clients in options.
     domain_name_servers     : Vec<Ipv4Addr>,
+    /// Sent to clients in options.
     static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
 }
 
 impl MessageBuilder {
+    /// Creates a builder with message parameters which will not be changed.
     pub fn new(
         server_ip_address       : Ipv4Addr,
         server_name             : String,
@@ -49,6 +56,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPOFFER` message from a `DHCPDISCOVER` message.
     pub fn dhcp_discover_to_offer(
         &self,
         discover                        : &Message,
@@ -87,6 +95,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPACK` message from a `DHCPREQUEST` message.
     pub fn dhcp_request_to_ack(
         &self,
         request                         : &Message,
@@ -127,6 +136,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPACK` message from a `DHCPINFORM` message.
     pub fn dhcp_inform_to_ack(
         &self,
         inform                          : &Message,
@@ -164,6 +174,7 @@ impl MessageBuilder {
         }
     }
 
+    /// Creates a `DHCPNAK` message from a `DHCPREQUEST` message.
     pub fn dhcp_request_to_nak(
         &self,
         request                         : &Message,

@@ -1,4 +1,9 @@
+//! HardwareType module
+
 #[derive(Debug, Clone, Copy)]
+/// DHCP hardware type.
+///
+/// Only MAC-48 is implemented.
 pub enum HardwareType {
     Undefined,
     Mac48,

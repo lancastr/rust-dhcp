@@ -1,3 +1,5 @@
+//! nom parser module
+
 use std::net::Ipv4Addr;
 
 use nom::*;
@@ -11,9 +13,9 @@ use super::{
     OptionTag::*,
 };
 
-const U8_LEN: u8        = 1u8;
-const U16_LEN: u8       = 2u8;
-const U32_LEN: u8       = 4u8;
+const U8_LEN: u8 = 1u8;
+const U16_LEN: u8 = 2u8;
+const U32_LEN: u8 = 4u8;
 
 named!(pub parse_message<&[u8], Message>,
     do_parse!(

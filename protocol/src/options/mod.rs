@@ -1,3 +1,5 @@
+//! Options module
+
 mod option_tag;
 mod message_type;
 
@@ -6,6 +8,10 @@ pub use self::message_type::MessageType;
 
 use std::net::Ipv4Addr;
 
+/// DHCP options.
+///
+/// Implemented totally with `Option` for better flexibility and polymorphism.
+/// Only RFC 2132 is implemented for now.
 pub struct Options {
     /*
     RFC 2132
@@ -97,6 +103,7 @@ pub struct Options {
 }
 
 impl Options {
+    /// Default empty options.
     pub fn new() -> Self {
         Options {
             subnet_mask                     : None,

@@ -1,3 +1,5 @@
+//! The original Rust DHCP client implementation
+
 mod client;
 mod message;
 
@@ -12,4 +14,7 @@ extern crate rand;
 extern crate protocol;
 extern crate framed;
 
-pub use self::client::Client;
+pub use self::client::{
+    Client,
+    Result,
+};

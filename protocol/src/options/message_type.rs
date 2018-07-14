@@ -1,8 +1,10 @@
-#[allow(dead_code)]
+//! MessageType module
+
 #[derive(Debug, Clone, Copy)]
+/// DHCP message type (RFC 2131 only).
 pub enum MessageType {
     Undefined = 0,
-    // RFC 2132
+    // RFC 2131
     DhcpDiscover,
     DhcpOffer,
     DhcpRequest,
