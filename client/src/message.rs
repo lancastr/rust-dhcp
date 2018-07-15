@@ -1,4 +1,4 @@
-//! A builder for common DHCP client messages
+//! A builder for common DHCP client messages.
 
 use std::{
     net::{

@@ -1,8 +1,4 @@
-//! A builder for common DHCP server messages
-
-mod error;
-mod offer;
-mod ack;
+//! A builder for common DHCP server messages.
 
 use std::{
     net::{
@@ -12,10 +8,10 @@ use std::{
 
 use protocol::*;
 
-pub use self::{
-    offer::Offer,
-    ack::Ack,
-    error::Error,
+use database::{
+    Offer,
+    Ack,
+    Error,
 };
 
 /// Builds common server messages with some parameters.

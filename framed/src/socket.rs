@@ -1,4 +1,4 @@
-//! Socket module
+//! The main DHCP socket module.
 
 use std::{
     net::SocketAddr,

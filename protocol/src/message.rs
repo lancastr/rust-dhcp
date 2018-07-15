@@ -1,4 +1,4 @@
-//! Message module
+//! The main DHCP message module.
 
 use std::{
     fmt,
@@ -15,12 +15,7 @@ use eui48::{
 
 use super::{
     parser,
-    error::Error::{
-        self,
-        Validation,
-    },
-    operation_code::OperationCode,
-    hardware_type::HardwareType,
+    Error::Validation,
     options::{
         Options,
         OptionTag,
@@ -52,30 +47,59 @@ pub struct Message {
     pub options                     : Options,
 }
 
-macro_rules! must_equal (
-    ($name:expr, $target:expr) => ( if $target != $name { return Err(Validation); } )
-);
-macro_rules! must_enum_equal (
-    ($name:expr, $target:pat) => (if let $target = $name {} else { return Err(Validation); } )
-);
-macro_rules! must_set_option (
-    ($name:expr) => ( if $name.is_none() { return Err(Validation); } )
-);
-macro_rules! must_set_ipv4 (
-    ($name:expr) => ( if $name.is_unspecified() { return Err(Validation); } )
-);
-macro_rules! must_not_equal (
-    ($name:expr, $target:expr) => ( if $target == $name { return Err(Validation); } )
-);
-macro_rules! must_not_enum_equal (
-    ($name:expr, $target:pat) => (if let $target = $name { return Err(Validation); } )
-);
-macro_rules! must_not_set_option (
-    ($name:expr) => ( if $name.is_some() { return Err(Validation); } )
-);
-macro_rules! must_not_set_ipv4 (
-    ($name:expr) => ( if !$name.is_unspecified() { return Err(Validation); } )
-);
+/// The error type returned by `Message::validate`.
+#[derive(Fail, Debug)]
+pub enum Error {
+    #[fail(display = "Validation error")]
+    Validation,
+}
+
+/// DHCP opcode.
+#[derive(Debug, Clone, Copy)]
+pub enum OperationCode {
+    Undefined,
+    BootRequest,
+    BootReply,
+}
+
+impl From<u8> for OperationCode {
+    fn from(value: u8) -> Self {
+        use self::OperationCode::*;
+        match value {
+            1 => BootRequest,
+            2 => BootReply,
+            _ => Undefined,
+        }
+    }
+}
+
+/// DHCP hardware type.
+///
+/// Only MAC-48 is implemented.
+#[derive(Debug, Clone, Copy)]
+pub enum HardwareType {
+    Undefined,
+    Mac48,
+}
+
+impl From<u8> for HardwareType {
+    fn from(value: u8) -> Self {
+        use self::HardwareType::*;
+        match value {
+            1 => Mac48,
+            _ => Undefined,
+        }
+    }
+}
+
+macro_rules! must_equal (($name:expr, $target:expr) => ( if $target != $name { return Err(Validation); } ));
+macro_rules! must_enum_equal (($name:expr, $target:pat) => (if let $target = $name {} else { return Err(Validation); } ));
+macro_rules! must_set_option (($name:expr) => ( if $name.is_none() { return Err(Validation); } ));
+macro_rules! must_set_ipv4 (($name:expr) => ( if $name.is_unspecified() { return Err(Validation); } ));
+macro_rules! must_not_equal (($name:expr, $target:expr) => ( if $target == $name { return Err(Validation); } ));
+macro_rules! must_not_enum_equal (($name:expr, $target:pat) => (if let $target = $name { return Err(Validation); } ));
+macro_rules! must_not_set_option (($name:expr) => ( if $name.is_some() { return Err(Validation); } ));
+macro_rules! must_not_set_ipv4 (($name:expr) => ( if !$name.is_unspecified() { return Err(Validation); } ));
 
 impl Message {
     /// DHCP message deserialization.
@@ -87,7 +111,10 @@ impl Message {
     pub fn from_bytes(src: &[u8]) -> io::Result<Self> {
         let message = match parser::parse_message(src) {
             Ok((_, message)) => message,
-            Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidInput, error.to_string())),
+            Err(error) => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                error.to_string()
+            )),
         };
 
         Ok(message)
@@ -116,14 +143,18 @@ impl Message {
         cursor.put_u32_be(u32::from(self.server_ip_address));
         cursor.put_u32_be(u32::from(self.gateway_ip_address));
 
-        cursor.put(self.client_hardware_address.as_bytes()); // 6 byte MAC-48
-        cursor.put(vec![0u8; SIZE_HARDWARE_ADDRESS - self.client_hardware_address.as_bytes().len()]); // 10 byte padding
+        // 6 byte MAC-48
+        cursor.put(self.client_hardware_address.as_bytes());
+        // 10 byte padding
+        cursor.put(vec![0u8; SIZE_HARDWARE_ADDRESS - self.client_hardware_address.as_bytes().len()]);
 
         cursor.put(self.server_name.as_bytes());
-        cursor.put(vec![0u8; SIZE_SERVER_NAME - self.server_name.len()]); // (64 - length) byte padding
+        // (64 - length) byte padding
+        cursor.put(vec![0u8; SIZE_SERVER_NAME - self.server_name.len()]);
 
         cursor.put(self.boot_filename.as_bytes());
-        cursor.put(vec![0u8; SIZE_BOOT_FILENAME - self.boot_filename.len()]); // (128 - length) byte padding
+        // (128 - length) byte padding
+        cursor.put(vec![0u8; SIZE_BOOT_FILENAME - self.boot_filename.len()]);
 
         cursor.put(MAGIC_COOKIE);
         if let Some(value) = self.options.subnet_mask {
@@ -217,7 +248,7 @@ impl Message {
     ///
     /// # Errors
     /// `super::Error` if any option is invalid.
-    pub fn validate(&self) -> Result<(), Error> {
+    pub fn validate(&self) -> Result<MessageType, Error> {
         must_not_enum_equal!(self.hardware_type, HardwareType::Undefined);
         must_equal!(self.hardware_address_length, EUI48LEN as u8);
         must_equal!(self.hardware_options, 0u8);
@@ -308,7 +339,7 @@ impl Message {
             _ => return Err(Validation),
         }
 
-        Ok(())
+        Ok(dhcp_message_type)
     }
 }
 
@@ -316,37 +347,37 @@ impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f)?;
         writeln!(f, "_____________________________________________________________________HEADER")?;
-        writeln!(f, "operation_code             : {:?}", self.operation_code)?;
-        writeln!(f, "hardware_type              : {:?}", self.hardware_type)?;
-        writeln!(f, "hardware_address_length    : {:?}", self.hardware_address_length)?;
-        writeln!(f, "hardware_options           : {:?}", self.hardware_options)?;
-        writeln!(f, "transaction_id             : {:?}", self.transaction_id)?;
-        writeln!(f, "seconds                    : {:?}", self.seconds)?;
-        writeln!(f, "is_broadcast               : {:?}", self.is_broadcast)?;
-        writeln!(f, "client_ip_address          : {:?}", self.client_ip_address)?;
-        writeln!(f, "your_ip_address            : {:?}", self.your_ip_address)?;
-        writeln!(f, "server_ip_address          : {:?}", self.server_ip_address)?;
-        writeln!(f, "gateway_ip_address         : {:?}", self.gateway_ip_address)?;
-        writeln!(f, "client_hardware_address    : {:?}", self.client_hardware_address)?;
-        writeln!(f, "server_name                : {}", self.server_name)?;
-        writeln!(f, "boot_filename              : {}", self.boot_filename)?;
+        writeln!(f, "operation_code          : {:?}", self.operation_code)?;
+        writeln!(f, "hardware_type           : {:?}", self.hardware_type)?;
+        writeln!(f, "hardware_address_length : {:?}", self.hardware_address_length)?;
+        writeln!(f, "hardware_options        : {:?}", self.hardware_options)?;
+        writeln!(f, "transaction_id          : {:?}", self.transaction_id)?;
+        writeln!(f, "seconds                 : {:?}", self.seconds)?;
+        writeln!(f, "is_broadcast            : {:?}", self.is_broadcast)?;
+        writeln!(f, "client_ip_address       : {:?}", self.client_ip_address)?;
+        writeln!(f, "your_ip_address         : {:?}", self.your_ip_address)?;
+        writeln!(f, "server_ip_address       : {:?}", self.server_ip_address)?;
+        writeln!(f, "gateway_ip_address      : {:?}", self.gateway_ip_address)?;
+        writeln!(f, "client_hardware_address : {:?}", self.client_hardware_address)?;
+        writeln!(f, "server_name             : {}", self.server_name)?;
+        writeln!(f, "boot_filename           : {}", self.boot_filename)?;
 
         writeln!(f, "____________________________________________________________________OPTIONS")?;
-        if let Some(ref v) = self.options.subnet_mask               { writeln!(f, "subnet_mask                : {:?}", v)?; }
-        if let Some(ref v) = self.options.routers                   { writeln!(f, "routers                    : {:?}", v)?; }
-        if let Some(ref v) = self.options.domain_name_servers       { writeln!(f, "domain_name_servers        : {:?}", v)?; }
-        if let Some(ref v) = self.options.static_routes             { writeln!(f, "static_routes              : {:?}", v)?; }
-        if let Some(ref v) = self.options.address_request           { writeln!(f, "address_request            : {:?}", v)?; }
-        if let Some(ref v) = self.options.address_time              { writeln!(f, "address_time               : {:?}", v)?; }
-        if let Some(ref v) = self.options.overload                  { writeln!(f, "overload                   : {:?}", v)?; }
-        if let Some(ref v) = self.options.dhcp_message_type         { writeln!(f, "dhcp_message_type          : {:?}", v)?; }
-        if let Some(ref v) = self.options.dhcp_server_id            { writeln!(f, "dhcp_server_id             : {:?}", v)?; }
-        if let Some(ref v) = self.options.parameter_list            { writeln!(f, "parameter_list             : {:?}", v)?; }
-        if let Some(ref v) = self.options.dhcp_message              { writeln!(f, "dhcp_message               : {:?}", v)?; }
-        if let Some(ref v) = self.options.dhcp_max_message_size     { writeln!(f, "dhcp_max_message_size      : {:?}", v)?; }
-        if let Some(ref v) = self.options.renewal_time              { writeln!(f, "renewal_time               : {:?}", v)?; }
-        if let Some(ref v) = self.options.rebinding_time            { writeln!(f, "rebinding_time             : {:?}", v)?; }
-        if let Some(ref v) = self.options.client_id                 { writeln!(f, "client_id                  : {:?}", v)?; }
+        if let Some(ref v) = self.options.subnet_mask           { writeln!(f, "subnet_mask             : {:?}", v)?; }
+        if let Some(ref v) = self.options.routers               { writeln!(f, "routers                 : {:?}", v)?; }
+        if let Some(ref v) = self.options.domain_name_servers   { writeln!(f, "domain_name_servers     : {:?}", v)?; }
+        if let Some(ref v) = self.options.static_routes         { writeln!(f, "static_routes           : {:?}", v)?; }
+        if let Some(ref v) = self.options.address_request       { writeln!(f, "address_request         : {:?}", v)?; }
+        if let Some(ref v) = self.options.address_time          { writeln!(f, "address_time            : {:?}", v)?; }
+        if let Some(ref v) = self.options.overload              { writeln!(f, "overload                : {:?}", v)?; }
+        if let Some(ref v) = self.options.dhcp_message_type     { writeln!(f, "dhcp_message_type       : {:?}", v)?; }
+        if let Some(ref v) = self.options.dhcp_server_id        { writeln!(f, "dhcp_server_id          : {:?}", v)?; }
+        if let Some(ref v) = self.options.parameter_list        { writeln!(f, "parameter_list          : {:?}", v)?; }
+        if let Some(ref v) = self.options.dhcp_message          { writeln!(f, "dhcp_message            : {:?}", v)?; }
+        if let Some(ref v) = self.options.dhcp_max_message_size { writeln!(f, "dhcp_max_message_size   : {:?}", v)?; }
+        if let Some(ref v) = self.options.renewal_time          { writeln!(f, "renewal_time            : {:?}", v)?; }
+        if let Some(ref v) = self.options.rebinding_time        { writeln!(f, "rebinding_time          : {:?}", v)?; }
+        if let Some(ref v) = self.options.client_id             { writeln!(f, "client_id               : {:?}", v)?; }
 
         Ok(())
     }

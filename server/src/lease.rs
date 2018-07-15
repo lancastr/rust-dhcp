@@ -1,8 +1,9 @@
-//! Lease module
+//! Address lease implementation.
 
 use chrono::prelude::*;
 
 /// The state of the `Lease`.
+#[derive(Clone)]
 enum State {
     Offered,
     Assigned,
@@ -13,6 +14,7 @@ enum State {
 const OFFER_TIMEOUT: u32 = 60;
 
 /// A lease record of the DHCP server lease database.
+#[derive(Clone)]
 pub struct Lease {
     address             : u32,
     lease_time          : u32,

@@ -1,4 +1,4 @@
-//! nom parser module
+//! DHCP message deserialization module (using `nom`).
 
 use std::net::Ipv4Addr;
 

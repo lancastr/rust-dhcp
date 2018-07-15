@@ -1,8 +1,10 @@
-//! The original Rust DHCP client implementation
+//! The original Rust DHCP server implementation.
 
 mod server;
 mod message;
+mod database;
 mod storage;
+mod storage_ram;
 mod lease;
 
 #[macro_use] extern crate log;
@@ -17,4 +19,8 @@ extern crate chrono;
 extern crate protocol;
 extern crate framed;
 
-pub use self::server::Server;
+pub use self::{
+    server::Server,
+    storage::Storage,
+    storage_ram::RamStorage,
+};

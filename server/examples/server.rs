@@ -17,6 +17,7 @@ fn main() {
 
         Ipv4Addr::new(192,168,0,2)..Ipv4Addr::new(192,168,0,101),
         Ipv4Addr::new(192,168,0,101)..Ipv4Addr::new(192,168,0,200),
+        Box::new(server::RamStorage::new()),
 
         Ipv4Addr::new(255,255,0,0),
         vec![Ipv4Addr::new(192,168,0,1)],

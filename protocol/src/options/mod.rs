@@ -1,4 +1,4 @@
-//! Options module
+//! DHCP options module.
 
 mod option_tag;
 mod message_type;

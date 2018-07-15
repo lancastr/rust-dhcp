@@ -1,7 +1,4 @@
-//! DHCP protocol message decoding and encoding crate
-
-#![allow(dead_code)]
-#![allow(unused_macros)]
+//! DHCP protocol message decoding and encoding crate.
 
 extern crate bytes;
 #[macro_use] extern crate nom;
@@ -10,9 +7,6 @@ extern crate eui48;
 
 mod message;
 mod parser;
-mod error;
-mod operation_code;
-mod hardware_type;
 mod options;
 
 mod constants {
@@ -25,10 +19,12 @@ mod constants {
 }
 
 pub use self::{
-    message::Message,
-    error::Error,
-    operation_code::OperationCode,
-    hardware_type::HardwareType,
+    message::{
+        Message,
+        OperationCode,
+        HardwareType,
+        Error,
+    },
     options::{
         Options,
         OptionTag,

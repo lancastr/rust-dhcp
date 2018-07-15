@@ -1,4 +1,4 @@
-//! Client module
+//! The main DHCP client module.
 
 use std::net::{
     IpAddr,
@@ -16,11 +16,11 @@ use eui48::{
 use chrono::prelude::*;
 use rand;
 
-use protocol::{
-    self,
-    MessageType,
+use framed::{
+    DhcpFramed,
+    DHCP_PORT_SERVER,
+    DHCP_PORT_CLIENT,
 };
-use framed::*;
 use message::MessageBuilder;
 
 /// Is used if a server does not provide the `renewal_time` option.
@@ -37,7 +37,7 @@ enum DhcpState {
     // from not zero configuration sequence
     InitReboot,
     Rebooting,
-    // configuration renewal/rebinding sequence
+    // configuration renewal/rebinding sequence (TODO)
     Renewing,
     Rebinding,
     // the final state
@@ -80,8 +80,8 @@ struct RequestOptions {
     address_time        : Option<u32>,
 }
 
-#[derive(Debug, Clone)]
 /// The `Client` future result type.
+#[derive(Debug, Clone)]
 pub struct Result {
     your_ip_address     : Ipv4Addr,
     server_ip_address   : Ipv4Addr,
@@ -211,13 +211,21 @@ impl Client {
     }
 }
 
+macro_rules! start_send_or_panic(
+    ($socket:expr, $address:expr, $message:expr) => (
+        if let AsyncSink::NotReady(_) = $socket.start_send(($address, $message))? {
+            panic!("Must wait for poll_complete first");
+        }
+    )
+);
+
 impl Future for Client {
     type Item = Option<Result>;
     type Error = io::Error;
 
     /// Works infinite time (TODO).
     ///
-    ///               The DHCP client lifecycle (RFC 2131.
+    ///               The DHCP client lifecycle (RFC 2131).
     ///  --------                               -------
     /// |        | +-------------------------->|       |<-------------------+
     /// | INIT-  | |     +-------------------->| INIT  |                    |
@@ -263,6 +271,8 @@ impl Future for Client {
     ///                              ----------
     ///
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        use protocol::MessageType::*;
+
         loop {
             if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
 
@@ -282,10 +292,7 @@ impl Future for Client {
                         self.options.address_time,
                     );
                     info!("DHCPDISCOVER to {}:\n{}", self.state.destination, discover);
-
-                    if let AsyncSink::NotReady(_) = self.socket.start_send((self.state.destination, discover))? {
-                        panic!("Must wait for poll_complete first");
-                    }
+                    start_send_or_panic!(self.socket, self.state.destination, discover);
                     self.state.dhcp_state = DhcpState::Selecting;
                 },
                 DhcpState::Selecting => {
@@ -299,25 +306,35 @@ impl Future for Client {
 
                     let (addr, response) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
                     info!("Response from {}:\n{}", addr, response);
-                    if let Err(protocol::Error::Validation) = response.validate() {
-                        warn!("The response is invalid");
-                        continue;
-                    }
-                    let dhcp_message_type = response.options.dhcp_message_type.expect("The is an error in DHCP message validation");
+                    let dhcp_message_type = match response.validate() {
+                        Ok(dhcp_message_type) => dhcp_message_type,
+                        Err(_) => {
+                            warn!("The request is invalid");
+                            continue;
+                        },
+                    };
 
                     if response.transaction_id != self.state.transaction_id {
-                        warn!("Got a response with different transaction ID: {} (yours is {})", response.transaction_id, self.state.transaction_id);
+                        warn!(
+                            "Got a response with different transaction ID: {} (yours is {})",
+                            response.transaction_id,
+                            self.state.transaction_id,
+                        );
                         continue;
                     }
 
-                    if let MessageType::DhcpOffer = dhcp_message_type {} else {
+                    if let DhcpOffer = dhcp_message_type {} else {
                         warn!("Got an unexpected DHCP message type {:?}", dhcp_message_type);
                         continue;
                     }
 
-                    let address_time = response.options.address_time.expect("The is an error in DHCP message validation");
+                    let address_time = response.options.address_time
+                        .expect("A bug in DHCP message validation");
 
-                    self.state.destination = SocketAddr::new(IpAddr::V4(response.server_ip_address), DHCP_PORT_SERVER);
+                    self.state.destination = SocketAddr::new(
+                        IpAddr::V4(response.server_ip_address),
+                        DHCP_PORT_SERVER,
+                    );
                     self.state.offered_address = response.your_ip_address;
                     self.state.offered_time = address_time;
                     self.state.requested_at = Utc::now().timestamp() as u32;
@@ -330,10 +347,7 @@ impl Future for Client {
                         response.server_ip_address,
                     );
                     info!("DHCPREQUEST to {}:\n{}", self.state.destination, request);
-
-                    if let AsyncSink::NotReady(_) = self.socket.start_send((self.state.destination, request))? {
-                        panic!("Must wait for poll_complete first");
-                    }
+                    start_send_or_panic!(self.socket, self.state.destination, request);
                     self.state.dhcp_state = DhcpState::Requesting;
                 },
                 DhcpState::Requesting => {
@@ -345,31 +359,42 @@ impl Future for Client {
 
                     let (addr, response) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
                     info!("Response from {}:\n{}", addr, response);
-                    if let Err(protocol::Error::Validation) = response.validate() {
-                        warn!("The response is invalid");
-                        continue;
-                    }
-                    let dhcp_message_type = response.options.dhcp_message_type.expect("The is an error in DHCP message validation");
+                    let dhcp_message_type = match response.validate() {
+                        Ok(dhcp_message_type) => dhcp_message_type,
+                        Err(_) => {
+                            warn!("The request is invalid");
+                            continue;
+                        },
+                    };
 
                     if response.transaction_id != self.state.transaction_id {
-                        warn!("Got a response with different transaction ID: {} (yours is {})", response.transaction_id, self.state.transaction_id);
+                        warn!(
+                            "Got a response with different transaction ID: {} (yours is {})",
+                            response.transaction_id,
+                            self.state.transaction_id,
+                        );
                         continue;
                     }
 
                     match dhcp_message_type {
-                        MessageType::DhcpNak => {
-                            warn!("Got DHCPNAK in requesting state");
-                            self.state.destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255,255,255,255)), DHCP_PORT_SERVER);
+                        DhcpNak => {
+                            warn!("Got DHCPNAK in REQUESTING state. Reverting to INIT state.");
+                            self.state.destination = SocketAddr::new(
+                                IpAddr::V4(Ipv4Addr::new(255,255,255,255)),
+                                DHCP_PORT_SERVER,
+                            );
+                            self.state.dhcp_state = DhcpState::Init;
                             continue;
                         },
-                        MessageType::DhcpAck => {},
+                        DhcpAck => {},
                         _ => {
                             warn!("Got an unexpected DHCP message type {:?}", dhcp_message_type);
                             continue;
                         },
                     }
 
-                    let address_time = response.options.address_time.expect("The is an error in DHCP message validation");
+                    let address_time = response.options.address_time
+                        .expect("A bug in DHCP message validation");
 
                     self.state.assigned_address = response.your_ip_address;
                     self.state.renewal_at = self.state.requested_at + response.options.renewal_time.unwrap_or(
@@ -399,7 +424,8 @@ impl Future for Client {
                     'requested IP address' option in the DHCPREQUEST message.
                     */
 
-                    let address_request = self.options.address_request.expect("Requested address must be specified");
+                    let address_request = self.options.address_request
+                        .expect("A bug in the constructor");
 
                     let request = self.message_builder.request_init_reboot(
                         self.state.transaction_id,
@@ -408,10 +434,7 @@ impl Future for Client {
                         self.options.address_time,
                     );
                     info!("DHCPREQUEST to {}:\n{}", self.state.destination, request);
-
-                    if let AsyncSink::NotReady(_) = self.socket.start_send((self.state.destination, request))? {
-                        panic!("Must wait for poll_complete first");
-                    }
+                    start_send_or_panic!(self.socket, self.state.destination, request);
                     self.state.dhcp_state = DhcpState::Rebooting;
                 },
                 DhcpState::Rebooting => {
@@ -424,31 +447,41 @@ impl Future for Client {
 
                     let (addr, response) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
                     info!("Response from {}:\n{}", addr, response);
-                    if let Err(protocol::Error::Validation) = response.validate() {
-                        warn!("The response is invalid");
-                        continue;
-                    }
-                    let dhcp_message_type = response.options.dhcp_message_type.expect("The is an error in DHCP message validation");
+                    let dhcp_message_type = match response.validate() {
+                        Ok(dhcp_message_type) => dhcp_message_type,
+                        Err(_) => {
+                            warn!("The request is invalid");
+                            continue;
+                        },
+                    };
 
                     if response.transaction_id != self.state.transaction_id {
-                        warn!("Got a response with different transaction ID: {} (yours is {})", response.transaction_id, self.state.transaction_id);
+                        warn!(
+                            "Got a response with different transaction ID: {} (yours is {})",
+                            response.transaction_id,
+                            self.state.transaction_id
+                        );
                         continue;
                     }
 
                     match dhcp_message_type {
-                        MessageType::DhcpNak => {
-                            warn!("Got DHCPNAK in rebooting state");
-                            self.state.destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255,255,255,255)), DHCP_PORT_SERVER);
+                        DhcpNak => {
+                            warn!("Got DHCPNAK in REBOOTING state. Reverting to INIT-REBOOT state.");
+                            self.state.destination = SocketAddr::new(
+                                IpAddr::V4(Ipv4Addr::new(255,255,255,255)),
+                                DHCP_PORT_SERVER,
+                            );
                             continue;
                         },
-                        MessageType::DhcpAck => {},
+                        DhcpAck => {},
                         _ => {
                             warn!("Got an unexpected DHCP message type {:?}", dhcp_message_type);
                             continue;
                         },
                     }
 
-                    let address_time = response.options.address_time.expect("The is an error in DHCP message validation");
+                    let address_time = response.options.address_time
+                        .expect("A bug in DHCP message validation");
 
                     self.state.renewal_at = self.state.requested_at + response.options.renewal_time.unwrap_or(
                         self.state.requested_at + (((address_time as f64) * RENEWAL_TIME_FACTOR) as u32)

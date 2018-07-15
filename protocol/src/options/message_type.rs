@@ -1,7 +1,7 @@
-//! MessageType module
+//! DHCP message type module.
 
-#[derive(Debug, Clone, Copy)]
 /// DHCP message type (RFC 2131 only).
+#[derive(Debug, Clone, Copy)]
 pub enum MessageType {
     Undefined = 0,
     // RFC 2131

@@ -1,4 +1,4 @@
-//! The original Rust DHCP client implementation
+//! The original Rust DHCP client implementation.
 
 mod client;
 mod message;
