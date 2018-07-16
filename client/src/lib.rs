@@ -14,7 +14,10 @@ extern crate rand;
 extern crate protocol;
 extern crate framed;
 
-pub use self::client::{
-    Client,
-    Result,
+pub use self::{
+    client::{
+        Client,
+        Result,
+    },
+    message::ClientId,
 };

@@ -21,12 +21,26 @@ pub struct MessageBuilder {
     client_id                   : Vec<u8>,
 }
 
+pub enum ClientId {
+    Mac(MacAddress),
+    Custom(Vec<u8>),
+}
+
 impl MessageBuilder {
     /// Creates a builder with message parameters which will not be changed.
     pub fn new(
-        client_hardware_address : MacAddress,
-        client_id               : Vec<u8>,
+        client_id               : ClientId,
     ) -> Self {
+        let client_hardware_address = match client_id {
+            ClientId::Mac(mac) => mac,
+            _ => MacAddress::new([0u8; EUI48LEN]),
+        };
+
+        let client_id = match client_id {
+            ClientId::Custom(id) => id,
+            _ => client_hardware_address.as_bytes().to_vec(),
+        };
+
         MessageBuilder {
             client_hardware_address,
             client_id,

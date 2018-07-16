@@ -3,6 +3,7 @@
 
 use std::{
     collections::HashMap,
+    net::Ipv4Addr,
 };
 
 use storage::{
@@ -13,11 +14,11 @@ use lease::Lease;
 
 pub struct RamStorage {
     /// `IPv4` to `client_id` mapping.
-    address_client_map      : HashMap<u32, Vec<u8>>,
+    address_client_map      : HashMap<Ipv4Addr, Vec<u8>>,
     /// `client_id` to `Lease` mapping.
     client_lease_map        : HashMap<Vec<u8>, Lease>,
-//    /// `IPv4` addresses reported by `DHCPDECLINE`.
-//    frozen_addresses        : Vec<u32>,
+    /// `IPv4` addresses reported by `DHCPDECLINE`.
+    frozen_addresses        : Vec<Ipv4Addr>,
 }
 
 impl RamStorage {
@@ -25,6 +26,7 @@ impl RamStorage {
         RamStorage {
             address_client_map  : HashMap::new(),
             client_lease_map    : HashMap::new(),
+            frozen_addresses    : Vec::new(),
         }
     }
 }
@@ -32,7 +34,7 @@ impl RamStorage {
 impl Storage for RamStorage {
     fn get_client(
         &self,
-        address: u32,
+        address: &Ipv4Addr,
     ) -> Result<Option<Vec<u8>>, Error>
     {
         if let Some(client_id) = self.address_client_map.get(&address) {
@@ -44,17 +46,17 @@ impl Storage for RamStorage {
 
     fn add_client(
         &mut self,
-        address: u32,
+        address: &Ipv4Addr,
         client_id: &[u8],
     ) -> Result<(), Error>
     {
-        self.address_client_map.insert(address, client_id.to_vec());
+        self.address_client_map.insert(address.to_owned(), client_id.to_vec());
         Ok(())
     }
 
     fn delete_client(
         &mut self,
-        address: u32,
+        address: &Ipv4Addr,
     ) -> Result<(), Error>
     {
         self.address_client_map.remove(&address);
@@ -94,5 +96,22 @@ impl Storage for RamStorage {
         } else {
             Ok(None)
         }
+    }
+
+    fn check_frozen(
+        &self,
+        address: &Ipv4Addr,
+    ) -> Result<bool, Error>
+    {
+        Ok(self.frozen_addresses.contains(&address))
+    }
+
+    fn add_frozen(
+        &mut self,
+        address: &Ipv4Addr,
+    ) -> Result<(), Error>
+    {
+        self.frozen_addresses.push(address.to_owned());
+        Ok(())
     }
 }

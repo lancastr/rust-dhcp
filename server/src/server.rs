@@ -1,7 +1,6 @@
 //! The main DHCP server module.
 
 use std::{
-    ops::Range,
     net::{
         IpAddr,
         Ipv4Addr,
@@ -44,14 +43,14 @@ impl Server {
     ///
     /// * `server_name`
     /// May be explicitly set by a server user.
-    /// Otherwise is defaulted to the machine hostname.
+    /// Otherwise it is defaulted to the machine hostname.
     /// If the hostname cannot be get, remains empty.
     ///
     /// * `static_address_range`
-    /// Non-inclusive IPv4 address range.
+    /// An inclusive IPv4 address range. Gaps may be implemented later.
     ///
     /// * `dynamic_address_range`
-    /// Non-inclusive IPv4 address range.
+    /// An inclusive IPv4 address range. Gaps may be implemented later.
     ///
     /// * `subnet_mask`
     /// Static data for clients.
@@ -68,8 +67,8 @@ impl Server {
     pub fn new(
         server_ip_address       : Ipv4Addr,
         server_name             : Option<String>,
-        static_address_range    : Range<Ipv4Addr>,
-        dynamic_address_range   : Range<Ipv4Addr>,
+        static_address_range    : (Ipv4Addr, Ipv4Addr),
+        dynamic_address_range   : (Ipv4Addr, Ipv4Addr),
         storage                 : Box<Storage>,
 
         subnet_mask             : Ipv4Addr,
@@ -104,11 +103,19 @@ impl Server {
     }
 }
 
+/// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send_or_panic(
     ($socket:expr, $address:expr, $message:expr) => (
         if let AsyncSink::NotReady(_) = $socket.start_send(($address, $message))? {
             panic!("Must wait for poll_complete first");
         }
+    )
+);
+
+/// The passed `Option` must be already validated in `Message::validate` method.
+macro_rules! unwrap_validated (
+    ($option:expr) => (
+        $option.expect("A bug in DHCP message validation")
     )
 );
 
@@ -120,6 +127,7 @@ impl Future for Server {
     fn poll(&mut self) -> Poll<(), io::Error> {
         use protocol::MessageType::*;
 
+        info!("DHCP server started");
         loop {
             if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
 
@@ -204,11 +212,10 @@ impl Future for Server {
 
                         // the client is in SELECTING state
                         if request.options.dhcp_server_id.is_some() {
-                            match self.database.assign(
-                                client_id,
-                                request.options.address_time,
-                                request.options.address_request,
-                            ) {
+                            let address = unwrap_validated!(request.options.address_request);
+                            let lease_time = request.options.address_time;
+
+                            match self.database.assign(client_id, &address, lease_time) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
                                     info!("DHCPACK to {}:\n{}", addr, response);
@@ -226,16 +233,13 @@ impl Future for Server {
 
                         // the client is in INIT-REBOOT state
                         if request.client_ip_address.is_unspecified() {
-                            match self.database.check(
-                                client_id,
-                                request.options.address_request,
-                            ) {
+                            let address = unwrap_validated!(request.options.address_request);
+
+                            match self.database.check(client_id, &address) {
                                 Ok(ack) => {
                                     let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
                                     info!("DHCPACK to {}:\n{}", addr, response);
-                                    if let AsyncSink::NotReady(_) = self.socket.start_send((addr, response))? {
-                                        panic!("Must wait for poll_complete first");
-                                    }
+                                    start_send_or_panic!(self.socket, addr, response);
                                 },
                                 Err(error) => {
                                     warn!("Address checking error: {}", error.to_string());
@@ -255,11 +259,8 @@ impl Future for Server {
                         }
 
                         // the client is in RENEWING or REBINDING state
-                        match self.database.renew(
-                            client_id,
-                            &request.client_ip_address,
-                            request.options.address_time,
-                        ) {
+                        let lease_time = request.options.address_time;
+                        match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                             Ok(ack) => {
                                 let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
                                 info!("DHCPACK to {}:\n{}", addr, response);
@@ -268,24 +269,23 @@ impl Future for Server {
                             Err(error) => warn!("Address checking error: {}", error.to_string()),
                         }
                     },
-//                    DhcpDecline => {
-//                        /*
-//                        RFC 2131 §4.3.3
-//                        If the server receives a DHCPDECLINE message, the client has
-//                        discovered through some other means that the suggested network
-//                        address is already in use.  The server MUST mark the network address
-//                        as not available and SHOULD notify the local system administrator of
-//                        a possible configuration problem.
-//                        */
-//
-//                        match self.database.freeze(
-//                            client_id,
-//                            request.options.address_request,
-//                        ) {
-//                            Ok(_) => info!("Address {:?} has been marked as unavailable", request.options.address_request),
-//                            Err(error) => warn!("Address freezing error: {}", error.to_string()),
-//                        };
-//                    },
+                    DhcpDecline => {
+                        /*
+                        RFC 2131 §4.3.3
+                        If the server receives a DHCPDECLINE message, the client has
+                        discovered through some other means that the suggested network
+                        address is already in use.  The server MUST mark the network address
+                        as not available and SHOULD notify the local system administrator of
+                        a possible configuration problem.
+                        */
+
+                        let address = unwrap_validated!(request.options.address_request);
+
+                        match self.database.freeze(&address) {
+                            Ok(_) => info!("Address {:?} has been marked as unavailable", address),
+                            Err(error) => warn!("Address freezing error: {}", error.to_string()),
+                        };
+                    },
                     DhcpRelease => {
                         /*
                         RFC 2131 §4.3.4
@@ -295,11 +295,10 @@ impl Future for Server {
                         subsequent requests from the client.
                         */
 
-                        match self.database.deallocate(
-                            client_id,
-                            request.options.address_request,
-                        ) {
-                            Ok(_) => info!("Address {:?} has been released", request.options.address_request),
+                        let address = unwrap_validated!(request.options.address_request);
+
+                        match self.database.deallocate(client_id, &address) {
+                            Ok(_) => info!("Address {} has been released", address),
                             Err(error) => warn!("Address releasing error: {}", error.to_string()),
                         };
                     },
@@ -312,8 +311,10 @@ impl Future for Server {
                         to the client and SHOULD NOT fill in 'yiaddr'.
                         */
 
+                        let address = unwrap_validated!(request.options.address_request);
+
                         let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
-                        info!("Address {:?} has been taken by some client manually", request.options.address_request);
+                        info!("Address {} has been taken by some client manually", address);
                         info!("DHCPACK to {}:\n{}", addr, response);
                         start_send_or_panic!(self.socket, addr, response);
                     },

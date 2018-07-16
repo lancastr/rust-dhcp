@@ -1,5 +1,7 @@
 //! Address lease implementation.
 
+use std::net::Ipv4Addr;
+
 use chrono::prelude::*;
 
 /// The state of the `Lease`.
@@ -10,15 +12,15 @@ enum State {
     Released,
 }
 
-/// A client has only `OFFER_TIMEOUT` to accept a `DHCPOFFER`.
+/// A client has only `OFFER_TIMEOUT` seconds to accept a `DHCPOFFER`.
 const OFFER_TIMEOUT: u32 = 60;
 
 /// A lease record of the DHCP server lease database.
 #[derive(Clone)]
 pub struct Lease {
-    address             : u32,
-    lease_time          : u32,
+    address             : Ipv4Addr,
     state               : State,
+    lease_time          : u32,
     offered_at          : u32,
     assigned_at         : u32,
     renewed_at          : u32,
@@ -29,14 +31,13 @@ pub struct Lease {
 #[allow(dead_code)]
 impl Lease {
     /// Created a new `Lease` in `Offered` state.
-    pub fn new(address: u32, lease_time: u32) -> Self {
+    pub fn new(address: Ipv4Addr, lease_time: u32) -> Self {
         let offered_at = Utc::now().timestamp() as u32;
 
         Lease {
             address,
-            lease_time,
-
             state               : State::Offered,
+            lease_time,
             offered_at,
             assigned_at         : 0,
             renewed_at          : 0,
@@ -45,9 +46,9 @@ impl Lease {
         }
     }
 
-    /// `IPv4` represeneted as `u32`.
-    pub fn address(&self) -> u32 {
-        self.address
+    /// `IPv4` lease address.
+    pub fn address(&self) -> Ipv4Addr {
+        self.address.to_owned()
     }
 
     /// How long the address is leased for in milliseconds.

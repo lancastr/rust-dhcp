@@ -21,7 +21,10 @@ use framed::{
     DHCP_PORT_SERVER,
     DHCP_PORT_CLIENT,
 };
-use message::MessageBuilder;
+use message::{
+    MessageBuilder,
+    ClientId,
+};
 
 /// Is used if a server does not provide the `renewal_time` option.
 const RENEWAL_TIME_FACTOR: f64      = 0.5;
@@ -103,12 +106,9 @@ pub struct Client {
 impl Client {
     /// Creates a client future.
     ///
-    /// * `client_hardware_address`
-    /// The client's `MAC-48` hardware address.
-    ///
     /// * `client_id`
-    /// The optional client identifier.
-    /// If not set, defaults to `client_hardware_address` bytes.
+    /// The client identifier.
+    /// May be either a MAC-48 or a custom byte array.
     ///
     /// * `server_address`
     /// The DHCP server address.
@@ -134,8 +134,7 @@ impl Client {
     /// The server may lease the address for different amount time if it decides so.
     ///
     pub fn new(
-        client_hardware_address : MacAddress,
-        client_id               : Option<Vec<u8>>,
+        client_id               : ClientId,
         server_address          : Option<Ipv4Addr>,
         client_address          : Option<Ipv4Addr>,
         address_request         : Option<Ipv4Addr>,
@@ -167,10 +166,7 @@ impl Client {
         };
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
 
-        let message_builder = MessageBuilder::new(
-            client_hardware_address,
-            client_id.unwrap_or(client_hardware_address.as_bytes().to_vec()),
-        );
+        let message_builder = MessageBuilder::new(client_id);
 
         let mut options = RequestOptions {
             address_request,
@@ -188,7 +184,7 @@ impl Client {
         let state = State {
             destination,
             dhcp_state,
-            transaction_id      : rand::random::<u32>(),
+            transaction_id      : 0u32,
             is_broadcast,
 
             offered_address     : Ipv4Addr::new(0,0,0,0),
@@ -219,8 +215,8 @@ macro_rules! start_send_or_panic(
     )
 );
 
-impl Future for Client {
-    type Item = Option<Result>;
+impl Stream for Client {
+    type Item = Result;
     type Error = io::Error;
 
     /// Works infinite time (TODO).
@@ -270,9 +266,10 @@ impl Future for Client {
     ///                             |          |----------------------------+
     ///                              ----------
     ///
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         use protocol::MessageType::*;
 
+        info!("DHCP client started");
         loop {
             if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
 
@@ -284,6 +281,8 @@ impl Future for Client {
                     The client MAY suggest a network address and/or lease time by including
                     the 'requested IP address' and 'IP address lease time' options.
                     */
+
+                    self.state.transaction_id = rand::random::<u32>();
 
                     let discover = self.message_builder.discover(
                         self.state.transaction_id,
@@ -423,6 +422,8 @@ impl Future for Client {
                     message.  The client MUST insert its known network address as a
                     'requested IP address' option in the DHCPREQUEST message.
                     */
+
+                    self.state.transaction_id = rand::random::<u32>();
 
                     let address_request = self.options.address_request
                         .expect("A bug in the constructor");

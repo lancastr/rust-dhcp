@@ -13,16 +13,13 @@ use eui48::{
     EUI48LEN,
 };
 
-use super::{
-    parser,
-    Error::Validation,
-    options::{
-        Options,
-        OptionTag,
-        MessageType,
-    },
-    constants::*,
+use parser;
+use options::{
+    Options,
+    OptionTag,
+    MessageType,
 };
+use super::constants::*;
 
 /// DHCP message.
 pub struct Message {
@@ -246,9 +243,13 @@ impl Message {
 
     /// DHCP message validation.
     ///
+    /// Returns the DHCP message type on successful validation.
+    ///
     /// # Errors
-    /// `super::Error` if any option is invalid.
+    /// Returns `Error::Validation` if any option is invalid.
     pub fn validate(&self) -> Result<MessageType, Error> {
+        use Error::Validation;
+
         must_not_enum_equal!(self.hardware_type, HardwareType::Undefined);
         must_equal!(self.hardware_address_length, EUI48LEN as u8);
         must_equal!(self.hardware_options, 0u8);
