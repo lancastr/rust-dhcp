@@ -9,7 +9,7 @@ mod lease;
 
 #[macro_use] extern crate log;
 extern crate tokio;
-#[macro_use] extern crate futures;
+extern crate futures;
 extern crate bytes;
 extern crate eui48;
 extern crate hostname;

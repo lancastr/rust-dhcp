@@ -1,8 +1,9 @@
 //! DHCP option tags module.
 
-/// DHCP options codes (RFC 2132 only).
+/// DHCP options codes (RFC 2132 only and some RFC 2242 stuff just to fill gaps).
 #[derive(Debug)]
 pub enum OptionTag {
+    Unknown = -1,
     Pad = 0,
 
     /*
@@ -76,8 +77,16 @@ pub enum OptionTag {
     RebindingTime,
     ClassId,
     ClientId,
-    // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
-    // skipping RFC 2242 code 63 (NetWare/IP sub Options)
+
+    /*
+    RFC 2242
+    */
+    NetwareIpDomain,
+    NetwareIpOption,
+
+    /*
+    RFC 2132 (continuation)
+    */
     // Application and Service Parameters (RFC 2132 §8) (continuation)
     NisDomainName,
     NisServerAddress,
@@ -162,8 +171,8 @@ impl From<u8> for OptionTag {
             59 => RebindingTime,
             60 => ClassId,
             61 => ClientId,
-            // skipping RFC 2242 code 62 (NetWare/IP Domain Name)
-            // skipping RFC 2242 code 63 (NetWare/IP sub Options)
+            62 => NetwareIpDomain,
+            63 => NetwareIpOption,
             64 => NisDomainName,
             65 => NisServerAddress,
             66 => ServerName,
@@ -179,7 +188,7 @@ impl From<u8> for OptionTag {
             76 => StdaServers,
 
             255 => End,
-            _ => Pad,
+            _ => Unknown,
         }
     }
 }

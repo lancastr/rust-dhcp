@@ -5,6 +5,5 @@ authors = ["hedgar <hedgar2017@gmail.com>"]
 
 [dependencies]
 bytes = "0.4.8"
-nom = "4.0.0"
 eui48 = "0.3.2"
 failure = "0.1.1"

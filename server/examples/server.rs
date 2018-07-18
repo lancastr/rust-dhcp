@@ -33,5 +33,6 @@ fn main() {
     let future = server
         .map_err(|error| error!("Error: {}", error));
 
+    info!("DHCP server started");
     tokio::run(future);
 }

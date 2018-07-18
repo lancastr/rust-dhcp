@@ -10,9 +10,6 @@ use tokio::{
     io,
     prelude::*,
 };
-use eui48::{
-    MacAddress,
-};
 use chrono::prelude::*;
 use rand;
 
@@ -63,15 +60,15 @@ struct State {
     /// Recorded by client from the selected `DHCPOFFER`.
     pub offered_time    : u32,
 
-    /// Recorded by client right before sending the `DHCPREQUEST`.
+    /// Recorded by client right before sending the `DhcpRequest`.
     pub requested_at    : u32,
-    /// Recorded by client from the `DHCPACK`.
+    /// Recorded by client from the `DhcpAck`.
     pub assigned_address: Ipv4Addr,
     /// Calculated by client from the `renewal_time` option or using the default factor.
     pub renewal_at      : u32,
     /// Calculated by client from the `rebinding_time` option or using the default factor.
     pub rebinding_at    : u32,
-    /// Calculated by client from the `address_time` option from the `DHCPACK` message.
+    /// Calculated by client from the `address_time` option from the `DhcpAck` message.
     pub expired_at      : u32,
 }
 
@@ -145,7 +142,7 @@ impl Client {
 
         /*
         RFC 2131 §4.4.4
-        The DHCP client broadcasts DHCPDISCOVER, DHCPREQUEST and DHCPINFORM
+        The DHCP client broadcasts DhcpDiscover, DhcpRequest and DHCPINFORM
         messages, unless the client knows the address of a DHCP server. The
         client unicasts DHCPRELEASE messages to the server. Because the
         client is declining the use of the IP address supplied by the server,
@@ -153,7 +150,7 @@ impl Client {
 
         When the DHCP client knows the address of a DHCP server, in either
         INIT or REBOOTING state, the client may use that address in the
-        DHCPDISCOVER or DHCPREQUEST rather than the IP broadcast address.
+        DhcpDiscover or DhcpRequest rather than the IP broadcast address.
         The client may also use unicast to send DHCPINFORM messages to a
         known DHCP server.  If the client receives no response to DHCP
         messages sent to the IP address of a known DHCP server, the DHCP
@@ -207,11 +204,71 @@ impl Client {
     }
 }
 
+/// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send_or_panic(
     ($socket:expr, $address:expr, $message:expr) => (
         if let AsyncSink::NotReady(_) = $socket.start_send(($address, $message))? {
             panic!("Must wait for poll_complete first");
         }
+    )
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! poll_complete_or_continue (
+    ($socket:expr) => (
+        match $socket.poll_complete() {
+            Ok(Async::Ready(_)) => {},
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(error) => {
+                warn!("Socket error: {}", error);
+                continue;
+            },
+        }
+    )
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! poll_or_continue (
+    ($socket:expr) => (
+        match $socket.poll() {
+            Ok(Async::Ready(Some(data))) => data,
+            Ok(Async::Ready(None)) => continue,
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(error) => {
+                warn!("Unable to parse a packet: {}", error);
+                continue;
+            },
+        };
+    )
+);
+
+/// The passed `Option` must be already validated in `protocol::Message::validate` method.
+macro_rules! unwrap_validated (
+    ($option:expr) => (
+        $option.expect("A bug in DHCP message validation")
+    )
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! check_transaction_id (
+    ($yours:expr, $response:expr) => (
+        if $response != $yours {
+            warn!("Got a response with wrong transaction ID: {} (yours is {})", $response, $yours);
+            continue;
+        }
+    )
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! validate_or_continue (
+    ($message:expr, $address:expr) => (
+        match $message.validate() {
+            Ok(dhcp_message_type) => dhcp_message_type,
+            Err(error) => {
+                warn!("The request from {} is invalid: {} {}", $address, error, $message);
+                continue;
+            },
+        };
     )
 );
 
@@ -225,40 +282,40 @@ impl Stream for Client {
     ///  --------                               -------
     /// |        | +-------------------------->|       |<-------------------+
     /// | INIT-  | |     +-------------------->| INIT  |                    |
-    /// | REBOOT |DHCPNAK/         +---------->|       |<---+               |
+    /// | REBOOT |DhcpNak/         +---------->|       |<---+               |
     /// |        |Restart|         |            -------     |               |
-    ///  --------  |  DHCPNAK/     |               |                        |
-    ///     |      Discard offer   |      -/Send DHCPDISCOVER               |
-    /// -/Send DHCPREQUEST         |               |                        |
-    ///     |      |     |      DHCPACK            v        |               |
+    ///  --------  |  DhcpNak/     |               |                        |
+    ///     |      Discard offer   |      -/Send DhcpDiscover               |
+    /// -/Send DhcpRequest         |               |                        |
+    ///     |      |     |      DhcpAck            v        |               |
     ///  -----------     |   (not accept.)/   -----------   |               |
     /// |           |    |  Send DHCPDECLINE |           |                  |
     /// | REBOOTING |    |         |         | SELECTING |<----+            |
     /// |           |    |        /          |           |     |DHCPOFFER/  |
     ///  -----------     |       /            -----------   |  |Collect     |
     ///     |            |      /                  |   |       |  replies   |
-    /// DHCPACK/         |     /  +----------------+   +-------+            |
+    /// DhcpAck/         |     /  +----------------+   +-------+            |
     /// Record lease, set|    |   v   Select offer/                         |
-    /// timers T1, T2   ------------  send DHCPREQUEST      |               |
-    ///     |   +----->|            |             DHCPNAK, Lease expired/   |
+    /// timers T1, T2   ------------  send DhcpRequest      |               |
+    ///     |   +----->|            |             DhcpNak, Lease expired/   |
     ///     |   |      | REQUESTING |                  Halt network         |
     ///     DHCPOFFER/ |            |                       |               |
     ///     Discard     ------------                        |               |
     ///     |   |        |        |                   -----------           |
-    ///     |   +--------+     DHCPACK/              |           |          |
+    ///     |   +--------+     DhcpAck/              |           |          |
     ///     |              Record lease, set    -----| REBINDING |          |
     ///     |                timers T1, T2     /     |           |          |
-    ///     |                     |        DHCPACK/   -----------           |
+    ///     |                     |        DhcpAck/   -----------           |
     ///     |                     v     Record lease, set   ^               |
     ///     +----------------> -------      /timers T1,T2   |               |
     ///                +----->|       |<---+                |               |
     ///                |      | BOUND |<---+                |               |
-    ///   DHCPOFFER, DHCPACK, |       |    |            T2 expires/   DHCPNAK/
-    ///    DHCPNAK/Discard     -------     |             Broadcast  Halt network
-    ///                |       | |         |            DHCPREQUEST         |
-    ///                +-------+ |        DHCPACK/          |               |
+    ///   DHCPOFFER, DhcpAck, |       |    |            T2 expires/   DhcpNak/
+    ///    DhcpNak/Discard     -------     |             Broadcast  Halt network
+    ///                |       | |         |            DhcpRequest         |
+    ///                +-------+ |        DhcpAck/          |               |
     ///                     T1 expires/   Record lease, set |               |
-    ///                  Send DHCPREQUEST timers T1, T2     |               |
+    ///                  Send DhcpRequest timers T1, T2     |               |
     ///                  to leasing server |                |               |
     ///                          |   ----------             |               |
     ///                          |  |          |------------+               |
@@ -269,15 +326,14 @@ impl Stream for Client {
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         use protocol::MessageType::*;
 
-        info!("DHCP client started");
         loop {
-            if let Async::NotReady = self.socket.poll_complete()? { return Ok(Async::NotReady); }
+            poll_complete_or_continue!(self.socket);
 
             match self.state.dhcp_state {
                 DhcpState::Init => {
                     /*
                     RFC 2131 §4.4.1
-                    The client begins in INIT state and forms a DHCPDISCOVER message.
+                    The client begins in INIT state and forms a DhcpDiscover message.
                     The client MAY suggest a network address and/or lease time by including
                     the 'requested IP address' and 'IP address lease time' options.
                     */
@@ -290,7 +346,7 @@ impl Stream for Client {
                         self.options.address_request,
                         self.options.address_time,
                     );
-                    info!("DHCPDISCOVER to {}:\n{}", self.state.destination, discover);
+                    info!("DhcpDiscover to {}: {}", self.state.destination, discover);
                     start_send_or_panic!(self.socket, self.state.destination, discover);
                     self.state.dhcp_state = DhcpState::Selecting;
                 },
@@ -300,35 +356,20 @@ impl Stream for Client {
                     If the parameters are acceptable, the client records the address of
                     the server that supplied the parameters from the 'server identifier'
                     field and sends that address in the 'server identifier' field of a
-                    DHCPREQUEST broadcast message.
+                    DhcpRequest broadcast message.
                     */
 
-                    let (addr, response) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
-                    info!("Response from {}:\n{}", addr, response);
-                    let dhcp_message_type = match response.validate() {
-                        Ok(dhcp_message_type) => dhcp_message_type,
-                        Err(_) => {
-                            warn!("The request is invalid");
-                            continue;
-                        },
-                    };
-
-                    if response.transaction_id != self.state.transaction_id {
-                        warn!(
-                            "Got a response with different transaction ID: {} (yours is {})",
-                            response.transaction_id,
-                            self.state.transaction_id,
-                        );
-                        continue;
-                    }
+                    let (mut addr, response) = poll_or_continue!(self.socket);
+                    let dhcp_message_type = validate_or_continue!(response, addr);
+                    info!("{:?} from {}: {}", dhcp_message_type, addr, response);
+                    check_transaction_id!(self.state.transaction_id, response.transaction_id);
 
                     if let DhcpOffer = dhcp_message_type {} else {
                         warn!("Got an unexpected DHCP message type {:?}", dhcp_message_type);
                         continue;
                     }
 
-                    let address_time = response.options.address_time
-                        .expect("A bug in DHCP message validation");
+                    let address_time = unwrap_validated!(response.options.address_time);
 
                     self.state.destination = SocketAddr::new(
                         IpAddr::V4(response.server_ip_address),
@@ -345,39 +386,25 @@ impl Stream for Client {
                         Some(self.state.offered_time),
                         response.server_ip_address,
                     );
-                    info!("DHCPREQUEST to {}:\n{}", self.state.destination, request);
+                    info!("DhcpRequest to {}: {}", self.state.destination, request);
                     start_send_or_panic!(self.socket, self.state.destination, request);
                     self.state.dhcp_state = DhcpState::Requesting;
                 },
                 DhcpState::Requesting => {
                     /*
                     RFC 2131 §4.4.1
-                    Once the DHCPACK message from the server arrives,
+                    Once the DhcpAck message from the server arrives,
                     the client is initialized and moves to BOUND state.
                     */
 
-                    let (addr, response) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
-                    info!("Response from {}:\n{}", addr, response);
-                    let dhcp_message_type = match response.validate() {
-                        Ok(dhcp_message_type) => dhcp_message_type,
-                        Err(_) => {
-                            warn!("The request is invalid");
-                            continue;
-                        },
-                    };
-
-                    if response.transaction_id != self.state.transaction_id {
-                        warn!(
-                            "Got a response with different transaction ID: {} (yours is {})",
-                            response.transaction_id,
-                            self.state.transaction_id,
-                        );
-                        continue;
-                    }
+                    let (mut addr, response) = poll_or_continue!(self.socket);
+                    let dhcp_message_type = validate_or_continue!(response, addr);
+                    info!("{:?} from {}: {}", dhcp_message_type, addr, response);
+                    check_transaction_id!(self.state.transaction_id, response.transaction_id);
 
                     match dhcp_message_type {
                         DhcpNak => {
-                            warn!("Got DHCPNAK in REQUESTING state. Reverting to INIT state.");
+                            warn!("Got DhcpNak in REQUESTING state. Reverting to INIT state.");
                             self.state.destination = SocketAddr::new(
                                 IpAddr::V4(Ipv4Addr::new(255,255,255,255)),
                                 DHCP_PORT_SERVER,
@@ -392,8 +419,7 @@ impl Stream for Client {
                         },
                     }
 
-                    let address_time = response.options.address_time
-                        .expect("A bug in DHCP message validation");
+                    let address_time = unwrap_validated!(response.options.address_time);
 
                     self.state.assigned_address = response.your_ip_address;
                     self.state.renewal_at = self.state.requested_at + response.options.renewal_time.unwrap_or(
@@ -418,15 +444,14 @@ impl Stream for Client {
                 DhcpState::InitReboot => {
                     /*
                     RFC 2131 §4.4.2
-                    The client begins in INIT-REBOOT state and sends a DHCPREQUEST
+                    The client begins in INIT-REBOOT state and sends a DhcpRequest
                     message.  The client MUST insert its known network address as a
-                    'requested IP address' option in the DHCPREQUEST message.
+                    'requested IP address' option in the DhcpRequest message.
                     */
 
                     self.state.transaction_id = rand::random::<u32>();
 
-                    let address_request = self.options.address_request
-                        .expect("A bug in the constructor");
+                    let address_request = unwrap_validated!(self.options.address_request);
 
                     let request = self.message_builder.request_init_reboot(
                         self.state.transaction_id,
@@ -434,40 +459,26 @@ impl Stream for Client {
                         address_request, // checked in constructor
                         self.options.address_time,
                     );
-                    info!("DHCPREQUEST to {}:\n{}", self.state.destination, request);
+                    info!("DhcpRequest to {}: {}", self.state.destination, request);
                     start_send_or_panic!(self.socket, self.state.destination, request);
                     self.state.dhcp_state = DhcpState::Rebooting;
                 },
                 DhcpState::Rebooting => {
                     /*
                     RFC 2131 §4.4.2
-                    Once a DHCPACK message with an 'xid' field matching that in the
-                    client's DHCPREQUEST message arrives from any server, the client is
+                    Once a DhcpAck message with an 'xid' field matching that in the
+                    client's DhcpRequest message arrives from any server, the client is
                     initialized and moves to BOUND state.
                     */
 
-                    let (addr, response) = if let Some(item) = try_ready!(self.socket.poll()) { item } else { continue };
-                    info!("Response from {}:\n{}", addr, response);
-                    let dhcp_message_type = match response.validate() {
-                        Ok(dhcp_message_type) => dhcp_message_type,
-                        Err(_) => {
-                            warn!("The request is invalid");
-                            continue;
-                        },
-                    };
-
-                    if response.transaction_id != self.state.transaction_id {
-                        warn!(
-                            "Got a response with different transaction ID: {} (yours is {})",
-                            response.transaction_id,
-                            self.state.transaction_id
-                        );
-                        continue;
-                    }
+                    let (mut addr, response) = poll_or_continue!(self.socket);
+                    let dhcp_message_type = validate_or_continue!(response, addr);
+                    info!("{:?} from {}: {}", dhcp_message_type, addr, response);
+                    check_transaction_id!(self.state.transaction_id, response.transaction_id);
 
                     match dhcp_message_type {
                         DhcpNak => {
-                            warn!("Got DHCPNAK in REBOOTING state. Reverting to INIT-REBOOT state.");
+                            warn!("Got DhcpNak in REBOOTING state. Reverting to INIT-REBOOT state.");
                             self.state.destination = SocketAddr::new(
                                 IpAddr::V4(Ipv4Addr::new(255,255,255,255)),
                                 DHCP_PORT_SERVER,
@@ -481,8 +492,7 @@ impl Stream for Client {
                         },
                     }
 
-                    let address_time = response.options.address_time
-                        .expect("A bug in DHCP message validation");
+                    let address_time = unwrap_validated!(response.options.address_time);
 
                     self.state.renewal_at = self.state.requested_at + response.options.renewal_time.unwrap_or(
                         self.state.requested_at + (((address_time as f64) * RENEWAL_TIME_FACTOR) as u32)

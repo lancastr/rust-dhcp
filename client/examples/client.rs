@@ -37,6 +37,7 @@ fn main() {
         None,//Some(1000000),
     ).expect("Client creating error");
 
+    info!("DHCP client started");
     for result in client.wait() {
         info!("Result: {:?}", result.unwrap());
         break;
