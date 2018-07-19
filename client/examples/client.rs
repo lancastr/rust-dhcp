@@ -30,9 +30,10 @@ fn main() {
     let client_id = args.get(1).unwrap_or(&"666".to_owned()).to_owned();
 
     let client = Client::new(
-        ClientId::Mac(MacAddress::new([0x01,0x02,0x03,0x04,0x05,0x07])),
-        None,//Some(Ipv4Addr::new(192,168,0,12)),
-        None,//Some(Ipv4Addr::new(192,168,0,15)),
+        ClientId::Mac(MacAddress::new([0x00,0x0c,0x29,0x56,0xab,0xcc])),
+        None,
+        None,//Some(Ipv4Addr::new(192,168,0,1)),
+        None,//Some(Ipv4Addr::new(192,168,0,103)),
         None,//Some(Ipv4Addr::new(192,168,0,15)),
         None,//Some(1000000),
     ).expect("Client creating error");

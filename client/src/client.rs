@@ -11,6 +11,7 @@ use tokio::{
     prelude::*,
 };
 use chrono::prelude::*;
+use hostname;
 use rand;
 
 use framed::{
@@ -107,6 +108,11 @@ impl Client {
     /// The client identifier.
     /// May be either a MAC-48 or a custom byte array.
     ///
+    /// * `hostname`
+    /// May be explicitly set by a client user.
+    /// Otherwise it is defaulted to the machine hostname.
+    /// If the hostname cannot be get, remains unset.
+    ///
     /// * `server_address`
     /// The DHCP server address.
     /// Set it if your know the server address.
@@ -132,13 +138,16 @@ impl Client {
     ///
     pub fn new(
         client_id               : ClientId,
+        hostname                : Option<String>,
         server_address          : Option<Ipv4Addr>,
         client_address          : Option<Ipv4Addr>,
         address_request         : Option<Ipv4Addr>,
         address_time            : Option<u32>,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_CLIENT);
-        let socket = DhcpFramed::new(addr, false, false)?;
+        let socket = DhcpFramed::new(addr, true, true)?;
+
+        let hostname: Option<String> = if hostname.is_none() { hostname::get_hostname() } else { None };
 
         /*
         RFC 2131 §4.4.4
@@ -163,7 +172,10 @@ impl Client {
         };
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
 
-        let message_builder = MessageBuilder::new(client_id);
+        let message_builder = MessageBuilder::new(
+            client_id,
+            hostname,
+        );
 
         let mut options = RequestOptions {
             address_request,
@@ -242,7 +254,10 @@ macro_rules! poll_or_continue (
     )
 );
 
-/// The passed `Option` must be already validated in `protocol::Message::validate` method.
+/// Is safe after calling the `validate_or_continue` macro.
+///
+/// The passed `Option` must be already validated in
+/// `protocol::Message::validate` method and be `Some(_)`.
 macro_rules! unwrap_validated (
     ($option:expr) => (
         $option.expect("A bug in DHCP message validation")
@@ -265,7 +280,7 @@ macro_rules! validate_or_continue (
         match $message.validate() {
             Ok(dhcp_message_type) => dhcp_message_type,
             Err(error) => {
-                warn!("The request from {} is invalid: {} {}", $address, error, $message);
+                warn!("The response from {} is invalid: {} {}", $address, error, $message);
                 continue;
             },
         };
@@ -370,9 +385,10 @@ impl Stream for Client {
                     }
 
                     let address_time = unwrap_validated!(response.options.address_time);
+                    let dhcp_server_id = unwrap_validated!(response.options.dhcp_server_id);
 
                     self.state.destination = SocketAddr::new(
-                        IpAddr::V4(response.server_ip_address),
+                        IpAddr::V4(dhcp_server_id),
                         DHCP_PORT_SERVER,
                     );
                     self.state.offered_address = response.your_ip_address;
@@ -384,7 +400,7 @@ impl Stream for Client {
                         self.state.is_broadcast,
                         self.state.offered_address,
                         Some(self.state.offered_time),
-                        response.server_ip_address,
+                        dhcp_server_id,
                     );
                     info!("DhcpRequest to {}: {}", self.state.destination, request);
                     start_send_or_panic!(self.socket, self.state.destination, request);

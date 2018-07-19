@@ -19,6 +19,8 @@ pub struct MessageBuilder {
     client_hardware_address     : MacAddress,
     /// Is set explicitly by user or defaulted to `client_hardware_address` bytes.
     client_id                   : Vec<u8>,
+    /// The optional machine hostname.
+    hostname                    : Option<String>,
 }
 
 pub enum ClientId {
@@ -30,6 +32,7 @@ impl MessageBuilder {
     /// Creates a builder with message parameters which will not be changed.
     pub fn new(
         client_id               : ClientId,
+        hostname                : Option<String>,
     ) -> Self {
         let client_hardware_address = match client_id {
             ClientId::Mac(mac) => mac,
@@ -44,6 +47,7 @@ impl MessageBuilder {
         MessageBuilder {
             client_hardware_address,
             client_id,
+            hostname,
         }
     }
 
@@ -56,14 +60,16 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.address_request         = address_request;
         options.address_time            = address_time;
         options.dhcp_message_type       = Some(MessageType::DhcpDiscover);
+        options.parameter_list          = Some(Self::parameter_list());
         options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -94,15 +100,17 @@ impl MessageBuilder {
         dhcp_server_id                  : Ipv4Addr,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.address_request         = Some(address_request);
         options.address_time            = address_time;
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
         options.dhcp_server_id          = Some(dhcp_server_id);
+        options.parameter_list          = Some(Self::parameter_list());
         options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -132,14 +140,16 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.address_request         = Some(address_request);
         options.address_time            = address_time;
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
+        options.parameter_list          = Some(Self::parameter_list());
         options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -169,13 +179,15 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.address_time            = address_time;
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
+        options.parameter_list          = Some(Self::parameter_list());
         options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -204,12 +216,14 @@ impl MessageBuilder {
         client_ip_address               : Ipv4Addr,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.dhcp_message_type       = Some(MessageType::DhcpInform);
+        options.parameter_list          = Some(Self::parameter_list());
         options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -239,6 +253,7 @@ impl MessageBuilder {
         dhcp_message                    : Option<String>,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.dhcp_message_type       = Some(MessageType::DhcpRelease);
         options.dhcp_server_id          = Some(dhcp_server_id);
         options.dhcp_message            = dhcp_message;
@@ -246,7 +261,7 @@ impl MessageBuilder {
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -276,6 +291,7 @@ impl MessageBuilder {
         dhcp_message                    : Option<String>,
     ) -> Message {
         let mut options = Options::new();
+        options.hostname                = self.hostname.to_owned();
         options.address_request         = Some(requested_address);
         options.dhcp_message_type       = Some(MessageType::DhcpDecline);
         options.dhcp_server_id          = Some(dhcp_server_id);
@@ -284,7 +300,7 @@ impl MessageBuilder {
 
         Message {
             operation_code              : OperationCode::BootRequest,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : EUI48LEN as u8,
             hardware_options            : 0u8,
 
@@ -303,5 +319,14 @@ impl MessageBuilder {
 
             options,
         }
+    }
+
+    fn parameter_list() -> Vec<u8> {
+        vec![
+            OptionTag::SubnetMask as u8,
+            OptionTag::Routers as u8,
+            OptionTag::DomainNameServers as u8,
+            OptionTag::StaticRoutes as u8,
+        ]
     }
 }

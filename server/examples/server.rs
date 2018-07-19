@@ -17,11 +17,11 @@ fn main() {
     env_logger::init();
 
     let server = server::Server::new(
-        Ipv4Addr::new(192,168,0,12),
+        Ipv4Addr::new(192,168,0,103),
         Some("The test server".to_owned()),
 
-        (Ipv4Addr::new(192,168,0,2), Ipv4Addr::new(192,168,0,100)),
-        (Ipv4Addr::new(192,168,0,101), Ipv4Addr::new(192,168,0,200)),
+        (Ipv4Addr::new(192,168,0,2), Ipv4Addr::new(192,168,0,99)),
+        (Ipv4Addr::new(192,168,0,100), Ipv4Addr::new(192,168,0,199)),
         Box::new(server::RamStorage::new()),
 
         Ipv4Addr::new(255,255,0,0),

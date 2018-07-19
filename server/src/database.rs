@@ -221,20 +221,21 @@ impl Database {
             if lease.is_offered() {
                 if lease.address() != *address {
                     return Err(Error::OfferHasDifferentAddress);
-                } else {
-                    let lease_time = cmp::min(lease_time.unwrap_or(lease.lease_time()), lease.lease_time());
-                    self.storage.update_lease(client_id, &mut |lease: &mut Lease| lease.assign(lease_time))?;
-                    return Ok(Ack{
-                        address         : Ipv4Addr::from(lease.address()),
-                        lease_time      : lease.lease_time(),
-                        renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
-                        rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
-                        message         : "Successfully assigned".to_owned(),
-                    });
                 }
-            }
-            if lease.is_offer_expired() {
-                return Err(Error::OfferExpired)
+                if lease.is_offer_expired() {
+                    return Err(Error::OfferExpired)
+                }
+                let lease_time = cmp::min(lease_time.unwrap_or(lease.lease_time()), lease.lease_time());
+                self.storage.update_lease(client_id, &mut |lease: &mut Lease| lease.assign(lease_time))?;
+                return Ok(Ack{
+                    address         : Ipv4Addr::from(lease.address()),
+                    lease_time      : lease.lease_time(),
+                    renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
+                    rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
+                    message         : "Successfully assigned".to_owned(),
+                });
+            } else {
+                return Err(Error::OfferNotFound);
             }
         }
         Err(Error::OfferNotFound)

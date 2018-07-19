@@ -59,18 +59,18 @@ impl MessageBuilder {
         offer                           : &Offer,
     ) -> Message {
         let mut options = Options::new();
-        options.subnet_mask             = Some(self.subnet_mask);
-        options.routers                 = Some(self.routers.to_owned());
-        options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
-        options.static_routes           = Some(self.static_routes.to_owned());
         options.address_time            = Some(offer.lease_time);
         options.dhcp_message_type       = Some(MessageType::DhcpOffer);
         options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(offer.message.to_owned());
 
+        if let Some(ref parameter_list) = discover.options.parameter_list {
+            self.add_requested_parameters(&mut options, parameter_list);
+        }
+
         Message {
             operation_code              : OperationCode::BootReply,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : discover.hardware_address_length,
             hardware_options            : 0u8,
 
@@ -98,10 +98,6 @@ impl MessageBuilder {
         ack                             : &Ack,
     ) -> Message {
         let mut options = Options::new();
-        options.subnet_mask             = Some(self.subnet_mask);
-        options.routers                 = Some(self.routers.to_owned());
-        options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
-        options.static_routes           = Some(self.static_routes.to_owned());
         options.address_time            = Some(ack.lease_time);
         options.dhcp_message_type       = Some(MessageType::DhcpAck);
         options.dhcp_server_id          = Some(self.server_ip_address);
@@ -109,9 +105,13 @@ impl MessageBuilder {
         options.renewal_time            = Some(ack.renewal_time);
         options.rebinding_time          = Some(ack.rebinding_time);
 
+        if let Some(ref parameter_list) = request.options.parameter_list {
+            self.add_requested_parameters(&mut options, parameter_list);
+        }
+
         Message {
             operation_code              : OperationCode::BootReply,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : request.hardware_address_length,
             hardware_options            : 0u8,
 
@@ -149,7 +149,7 @@ impl MessageBuilder {
 
         Message {
             operation_code              : OperationCode::BootReply,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : inform.hardware_address_length,
             hardware_options            : 0u8,
 
@@ -183,7 +183,7 @@ impl MessageBuilder {
 
         Message {
             operation_code              : OperationCode::BootReply,
-            hardware_type               : HardwareType::Mac48,
+            hardware_type               : HardwareType::Ethernet,
             hardware_address_length     : request.hardware_address_length,
             hardware_options            : 0u8,
 
@@ -201,6 +201,18 @@ impl MessageBuilder {
             boot_filename               : String::new(),
 
             options,
+        }
+    }
+
+    fn add_requested_parameters(&self, options: &mut Options, parameter_list: &[u8]) {
+        for tag in parameter_list {
+            match (*tag).into() {
+                OptionTag::SubnetMask => options.subnet_mask = Some(self.subnet_mask),
+                OptionTag::Routers => options.routers = Some(self.routers.to_owned()),
+                OptionTag::DomainNameServers => options.domain_name_servers = Some(self.domain_name_servers.to_owned()),
+                OptionTag::StaticRoutes => options.static_routes = Some(self.static_routes.to_owned()),
+                _ => continue,
+            }
         }
     }
 }

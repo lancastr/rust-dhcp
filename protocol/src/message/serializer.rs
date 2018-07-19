@@ -63,7 +63,7 @@ impl Message {
         Self::put_vec_ipv4(&mut cursor, Routers, &self.options.routers)?;
         Self::put_vec_ipv4(&mut cursor, TimeServers, &self.options.time_servers)?;
         Self::put_vec_ipv4(&mut cursor, NameServers, &self.options.name_servers)?;
-        Self::put_vec_ipv4(&mut cursor, DomainServers, &self.options.domain_name_servers)?;
+        Self::put_vec_ipv4(&mut cursor, DomainNameServers, &self.options.domain_name_servers)?;
         Self::put_vec_ipv4(&mut cursor, LogServers, &self.options.log_servers)?;
         Self::put_vec_ipv4(&mut cursor, QuotesServers, &self.options.quotes_servers)?;
         Self::put_vec_ipv4(&mut cursor, LprServers, &self.options.lpr_servers)?;

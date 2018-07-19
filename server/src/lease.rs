@@ -144,9 +144,6 @@ impl Lease {
 
     /// Check whether the lease's offer is expired.
     pub fn is_offer_expired(&self) -> bool {
-        if !self.is_offered() {
-            return true;
-        }
         if self.offered_at == 0 {
             return false;
         }

@@ -102,6 +102,7 @@ impl Message {
                 must_not_set_option!(self.options.address_request, "address_request");
                 must_not_set_option!(self.options.address_time, "address_time");
                 must_set_option!(self.options.dhcp_server_id, "dhcp_server_id");
+                must_not_set_option!(self.options.parameter_list, "parameter_list");
             },
             MessageType::DhcpDecline => {
                 must_enum_equal!(self.operation_code, OperationCode::BootRequest, "operation_code");
@@ -113,6 +114,7 @@ impl Message {
                 must_set_option!(self.options.address_request, "address_request");
                 must_not_set_option!(self.options.address_time, "address_time");
                 must_set_option!(self.options.dhcp_server_id, "dhcp_server_id");
+                must_not_set_option!(self.options.parameter_list, "parameter_list");
             },
 
             // server generated packets section
@@ -120,20 +122,20 @@ impl Message {
                 must_enum_equal!(self.operation_code, OperationCode::BootReply, "operation_code");
                 must_not_set_ipv4!(self.client_ip_address, "client_ip_address");
                 must_set_ipv4!(self.your_ip_address, "your_ip_address");
-                must_set_ipv4!(self.server_ip_address, "server_ip_address");
 
                 must_not_set_option!(self.options.address_request, "address_request");
                 must_set_option!(self.options.address_time, "address_time");
                 must_set_option!(self.options.dhcp_server_id, "dhcp_server_id");
+                must_not_set_option!(self.options.parameter_list, "parameter_list");
             },
             MessageType::DhcpAck => {
                 must_enum_equal!(self.operation_code, OperationCode::BootReply, "operation_code");
                 must_set_ipv4!(self.your_ip_address, "your_ip_address");
-                must_set_ipv4!(self.server_ip_address, "server_ip_address");
 
                 must_not_set_option!(self.options.address_request, "address_request");
                 must_set_option!(self.options.address_time, "address_time");
                 must_set_option!(self.options.dhcp_server_id, "dhcp_server_id");
+                must_not_set_option!(self.options.parameter_list, "parameter_list");
             },
             MessageType::DhcpNak => {
                 must_enum_equal!(self.operation_code, OperationCode::BootReply, "operation_code");
@@ -142,7 +144,8 @@ impl Message {
                 must_not_set_ipv4!(self.server_ip_address, "server_ip_address");
 
                 must_not_set_option!(self.options.address_request, "address_request");
-                must_not_set_option!(self.options.dhcp_server_id, "dhcp_server_id");
+                must_set_option!(self.options.dhcp_server_id, "dhcp_server_id");
+                must_not_set_option!(self.options.parameter_list, "parameter_list");
             },
             _ => return Err(Validation("Unknown DHCP message type")),
         }

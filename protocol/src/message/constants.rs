@@ -18,8 +18,8 @@ pub const SIZE_BOOT_FILENAME: usize = 128;
 /// 1 byte tag and 1 byte length before each DHCP option.
 pub const SIZE_OPTION_PREFIX: usize = 2;
 
-/// Only the first bit of the `flags` field in used in DHCP.
-pub const FLAG_BROADCAST: u16 = 0x0001;
+/// Only the highest bit of the `flags` field in used in DHCP.
+pub const FLAG_BROADCAST: u16 = 0b1000000000000000;
 
 /// The magic number before the DHCP options.
 pub const MAGIC_COOKIE: u32 = 0x63825363;

@@ -134,7 +134,10 @@ macro_rules! poll_or_continue (
     ($socket:expr) => (
         match $socket.poll() {
             Ok(Async::Ready(Some(data))) => data,
-            Ok(Async::Ready(None)) => continue,
+            Ok(Async::Ready(None)) => {
+                warn!("None from socket (unreachable)");
+                continue;
+            },
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(error) => {
                 warn!("Unable to parse a packet: {}", error);
@@ -348,10 +351,8 @@ impl Future for Server {
                     to the client and SHOULD NOT fill in 'yiaddr'.
                     */
 
-                    let address = unwrap_validated!(request.options.address_request);
-
                     let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
-                    info!("Address {} has been taken by some client manually", address);
+                    info!("Address {} has been taken by some client manually", request.client_ip_address);
                     info!("DhcpAck to {}: {}", addr, response);
                     start_send_or_panic!(self.socket, addr, response);
                 },

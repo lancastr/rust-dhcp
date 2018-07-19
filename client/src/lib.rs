@@ -9,6 +9,7 @@ extern crate futures;
 extern crate bytes;
 extern crate eui48;
 extern crate chrono;
+extern crate hostname;
 extern crate rand;
 
 extern crate protocol;

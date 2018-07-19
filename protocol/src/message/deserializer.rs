@@ -24,9 +24,9 @@ use message::{
 
 /// Checks if there is enough space in buffer to get a value.
 macro_rules! check_remaining(
-    ($cursor:expr, $distance:expr) => (
-        if $cursor.remaining() < $distance {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Buffer is too small"));
+    ($cursor:expr, $length:expr) => (
+        if $cursor.remaining() < $length {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Packet is too small"));
         }
     )
 );
@@ -53,8 +53,11 @@ impl Message {
     /// # Errors
     /// `io::Error` on parsing error.
     pub fn from_bytes(src: &[u8]) -> io::Result<Self> {
+        println!("{:?}", src);
+
         let mut cursor = ::std::io::Cursor::new(src.as_ref());
         check_remaining!(cursor, SIZE_HEADER_MINIMAL);
+
         let mut message = Message{
             operation_code: cursor.get_u8().into(),
             hardware_type: cursor.get_u8().into(),
@@ -86,6 +89,7 @@ impl Message {
             },
             options: Options::new(),
         };
+
         if cursor.get_u32_be() != MAGIC_COOKIE {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "MAGIC_COOKIE"));
         }
@@ -99,7 +103,7 @@ impl Message {
                 Routers                     => message.options.routers = Some(Self::get_vec_ipv4(&mut cursor)?),
                 TimeServers                 => message.options.time_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
                 NameServers                 => message.options.name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                DomainServers               => message.options.domain_name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                DomainNameServers           => message.options.domain_name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
                 LogServers                  => message.options.log_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
                 QuotesServers               => message.options.quotes_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
                 LprServers                  => message.options.lpr_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
