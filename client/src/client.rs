@@ -1,9 +1,14 @@
 //! The main DHCP client module.
 
-use std::net::{
-    IpAddr,
-    Ipv4Addr,
-    SocketAddr,
+use std::{
+    net::{
+        IpAddr,
+        Ipv4Addr,
+        SocketAddr,
+    },
+    time::{
+        Duration,
+    },
 };
 
 use tokio::{
@@ -23,11 +28,16 @@ use message::{
     MessageBuilder,
     ClientId,
 };
+use backoff::Backoff;
 
 /// Is used if a server does not provide the `renewal_time` option.
-const RENEWAL_TIME_FACTOR: f64      = 0.5;
+const RENEWAL_TIME_FACTOR: f64 = 0.5;
 /// Is used if a server does not provide the `rebinding_time` option.
-const REBINDING_TIME_FACTOR: f64    = 0.875;
+const REBINDING_TIME_FACTOR: f64 = 0.875;
+/// Initial timeout in seconds for waiting for DHCPOFFER messages.
+const DHCPOFFER_TIMEOUT_INITIAL: u64 = 1;
+/// Maximal timeout in seconds for waiting for DHCPOFFER messages.
+const DHCPOFFER_TIMEOUT_MAXIMUM: u64 = 64;
 
 /// RFC 2131 DHCP states.
 enum DhcpState {
@@ -47,6 +57,7 @@ enum DhcpState {
 
 /// The result of the `Client` future.
 struct State {
+    // Super-state data
     /// The destination address, usually the `255.255.255.255` broadcast address or a known server address.
     pub destination     : SocketAddr,
     /// Current DHCP client state (RFC 2131).
@@ -56,21 +67,31 @@ struct State {
     /// If the client requires broadcast response (e.g. if it is not configured yet).
     pub is_broadcast    : bool,
 
-    /// Recorded by client from the selected `DHCPOFFER`.
-    pub offered_address : Ipv4Addr,
-    /// Recorded by client from the selected `DHCPOFFER`.
-    pub offered_time    : u32,
+    // Data set in INIT or INIT-REBOOT state
+    /// DHCPOFFER receive deadline.
+    pub timer_selecting : Option<Backoff>,
 
-    /// Recorded by client right before sending the `DhcpRequest`.
+    // Data set in SELECTING state
+    /// Recorded by the client from the selected `DHCPOFFER`.
+    pub offered_address : Ipv4Addr,
+    /// Recorded by the client from the selected `DHCPOFFER`.
+    pub offered_time    : u32,
+    /// Recorded by the client right before sending the `DhcpRequest`.
     pub requested_at    : u32,
-    /// Recorded by client from the `DhcpAck`.
+
+    // Data set in REQUESTING state
+    /// Recorded by the client from the `DhcpAck`.
     pub assigned_address: Ipv4Addr,
-    /// Calculated by client from the `renewal_time` option or using the default factor.
+    /// Calculated by the client from the `renewal_time` option or using the default factor.
     pub renewal_at      : u32,
-    /// Calculated by client from the `rebinding_time` option or using the default factor.
+    /// Calculated by the client from the `rebinding_time` option or using the default factor.
     pub rebinding_at    : u32,
-    /// Calculated by client from the `address_time` option from the `DhcpAck` message.
+    /// Calculated by the client from the `address_time` option from the `DhcpAck` message.
     pub expired_at      : u32,
+
+    // Data set in INIT or INIT-REBOOT state
+    /// DHCPOFFER receive deadline.
+    pub timer_rebooting : Option<Backoff>,
 }
 
 /// May be used to request stuff explicitly.
@@ -196,6 +217,8 @@ impl Client {
             transaction_id      : 0u32,
             is_broadcast,
 
+            timer_selecting     : None,
+
             offered_address     : Ipv4Addr::new(0,0,0,0),
             offered_time        : 0u32,
             requested_at        : 0u32,
@@ -204,6 +227,8 @@ impl Client {
             renewal_at          : 0u32,
             rebinding_at        : 0u32,
             expired_at          : 0u32,
+
+            timer_rebooting     : None,
         };
 
         Ok(Client {
@@ -241,13 +266,13 @@ macro_rules! poll_complete_or_continue (
 
 /// Just to move some code from the overwhelmed `poll` method.
 macro_rules! poll_or_continue (
-    ($socket:expr) => (
-        match $socket.poll() {
+    ($stream:expr) => (
+        match $stream.poll() {
             Ok(Async::Ready(Some(data))) => data,
             Ok(Async::Ready(None)) => continue,
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(error) => {
-                warn!("Unable to parse a packet: {}", error);
+                warn!("Stream error: {}", error);
                 continue;
             },
         };
@@ -363,6 +388,13 @@ impl Stream for Client {
                     );
                     info!("DhcpDiscover to {}: {}", self.state.destination, discover);
                     start_send_or_panic!(self.socket, self.state.destination, discover);
+
+                    if self.state.timer_selecting.is_none() {
+                        self.state.timer_selecting = Some(Backoff::new(
+                            Duration::from_secs(DHCPOFFER_TIMEOUT_INITIAL),
+                            Duration::from_secs(DHCPOFFER_TIMEOUT_MAXIMUM),
+                        ));
+                    }
                     self.state.dhcp_state = DhcpState::Selecting;
                 },
                 DhcpState::Selecting => {
@@ -374,7 +406,41 @@ impl Stream for Client {
                     DhcpRequest broadcast message.
                     */
 
-                    let (mut addr, response) = poll_or_continue!(self.socket);
+                    // This boilerplate code queries the socket and the BEM timer for expiration.
+                    let (mut addr, response) = match self.socket.poll() {
+                        Ok(Async::Ready(Some(data))) => {
+                            self.state.timer_selecting = None;
+                            data
+                        },
+                        Ok(Async::Ready(None)) => {
+                            warn!("Socket returned None");
+                            continue;
+                        },
+                        Ok(Async::NotReady) => {
+                            if let Some(ref mut timer) = self.state.timer_selecting {
+                                match timer.poll() {
+                                    Ok(Async::Ready(Some(_))) => return Err(io::Error::new(io::ErrorKind::TimedOut, "Timeout")),
+                                    Ok(Async::Ready(None)) => {
+                                        warn!("Reverting to INIT state");
+                                        self.state.dhcp_state = DhcpState::Init;
+                                        continue;
+                                    },
+                                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                                    Err(error) => {
+                                        warn!("Timer error: {}", error);
+                                        continue;
+                                    },
+                                }
+                            } else {
+                                panic!("Timer is None in REQUESTING state");
+                            }
+                        },
+                        Err(error) => {
+                            warn!("Socket error: {}", error);
+                            continue;
+                        },
+                    };
+
                     let dhcp_message_type = validate_or_continue!(response, addr);
                     info!("{:?} from {}: {}", dhcp_message_type, addr, response);
                     check_transaction_id!(self.state.transaction_id, response.transaction_id);
@@ -477,6 +543,13 @@ impl Stream for Client {
                     );
                     info!("DhcpRequest to {}: {}", self.state.destination, request);
                     start_send_or_panic!(self.socket, self.state.destination, request);
+
+                    if self.state.timer_rebooting.is_none() {
+                        self.state.timer_rebooting = Some(Backoff::new(
+                            Duration::from_secs(DHCPOFFER_TIMEOUT_INITIAL),
+                            Duration::from_secs(DHCPOFFER_TIMEOUT_MAXIMUM),
+                        ));
+                    }
                     self.state.dhcp_state = DhcpState::Rebooting;
                 },
                 DhcpState::Rebooting => {
@@ -487,7 +560,45 @@ impl Stream for Client {
                     initialized and moves to BOUND state.
                     */
 
-                    let (mut addr, response) = poll_or_continue!(self.socket);
+                    // This boilerplate code queries the socket and the BEM timer for expiration.
+                    let (mut addr, response) = match self.socket.poll() {
+                        Ok(Async::Ready(Some(data))) => {
+                            self.state.timer_rebooting = None;
+                            data
+                        },
+                        Ok(Async::Ready(None)) => {
+                            warn!("Socket returned None");
+                            continue;
+                        },
+                        Ok(Async::NotReady) => {
+                            if let Some(ref mut timer) = self.state.timer_rebooting {
+                                match timer.poll() {
+                                    Ok(Async::Ready(Some(_))) => {
+                                        warn!("Reverting to INIT state");
+                                        self.state.dhcp_state = DhcpState::Init;
+                                        continue;
+                                    },
+                                    Ok(Async::Ready(None)) => {
+                                        warn!("Reverting to INIT-REBOOT state");
+                                        self.state.dhcp_state = DhcpState::InitReboot;
+                                        continue;
+                                    },
+                                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                                    Err(error) => {
+                                        warn!("Timer error: {}", error);
+                                        continue;
+                                    },
+                                }
+                            } else {
+                                panic!("Timer is None in REBOOTING state");
+                            }
+                        },
+                        Err(error) => {
+                            warn!("Socket error: {}", error);
+                            continue;
+                        },
+                    };
+
                     let dhcp_message_type = validate_or_continue!(response, addr);
                     info!("{:?} from {}: {}", dhcp_message_type, addr, response);
                     check_transaction_id!(self.state.transaction_id, response.transaction_id);
@@ -531,6 +642,7 @@ impl Stream for Client {
 
                 DhcpState::Bound => {
                     // TODO
+                    self.state.dhcp_state = DhcpState::Init;
                     return Ok(Async::Ready(self.result.to_owned()));
                 },
 

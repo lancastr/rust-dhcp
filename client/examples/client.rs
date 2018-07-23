@@ -32,15 +32,17 @@ fn main() {
     let client = Client::new(
         ClientId::Mac(MacAddress::new([0x00,0x0c,0x29,0x56,0xab,0xcc])),
         None,
-        None,//Some(Ipv4Addr::new(192,168,0,1)),
-        None,//Some(Ipv4Addr::new(192,168,0,103)),
+        Some(Ipv4Addr::new(192,168,0,103)),
+        Some(Ipv4Addr::new(192,168,0,100)),
         None,//Some(Ipv4Addr::new(192,168,0,15)),
         None,//Some(1000000),
     ).expect("Client creating error");
 
+    let future = client
+        .into_future()
+        .map_err(|(error, _client)| println!("Error: {}", error))
+        .map(|(result, _client)| println!("Result: {:?}", result));
+
     info!("DHCP client started");
-    for result in client.wait() {
-        info!("Result: {:?}", result.unwrap());
-        break;
-    }
+    tokio::run(future);
 }

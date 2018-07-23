@@ -16,7 +16,10 @@ use std::{
 use eui48::MacAddress;
 
 pub use self::{
-    options::Options,
+    options::{
+        Options,
+        OptionTag,
+    },
     operation_code::OperationCode,
     hardware_type::HardwareType,
 };
@@ -68,7 +71,7 @@ impl fmt::Display for Message {
         writeln!(f, "server_name                      | {}", self.server_name)?;
         writeln!(f, "boot_filename                    | {}", self.boot_filename)?;
         writeln!(f, "______________________________OPTIONS______________________________________")?;
-        let mut code_iter = 1..=76;
+        let mut code_iter = (OptionTag::SubnetMask as u8)..=(OptionTag::StdaServers as u8);
         write_opt!(f, self.options.subnet_mask, "subnet_mask", code_iter);
         write_opt!(f, self.options.time_offset, "time_offset", code_iter);
         write_opt!(f, self.options.routers, "routers", code_iter);

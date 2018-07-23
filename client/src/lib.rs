@@ -1,11 +1,12 @@
 //! The original Rust DHCP client implementation.
 
 mod client;
+mod backoff;
 mod message;
 
 #[macro_use] extern crate log;
 extern crate tokio;
-extern crate futures;
+#[macro_use] extern crate futures;
 extern crate bytes;
 extern crate eui48;
 extern crate chrono;
