@@ -166,7 +166,7 @@ impl Client {
         address_time            : Option<u32>,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_CLIENT);
-        let socket = DhcpFramed::new(addr, true, true)?;
+        let socket = DhcpFramed::new(addr, true, true, Some("eth0"))?;
 
         let hostname: Option<String> = if hostname.is_none() { hostname::get_hostname() } else { None };
 

@@ -42,7 +42,7 @@ pub struct DhcpFramed {
 
 impl DhcpFramed {
     /// Binds to addr and returns a future.
-    pub fn new(addr: SocketAddr, reuse_addr: bool, reuse_port: bool) -> io::Result<Self> {
+    pub fn new(addr: SocketAddr, reuse_addr: bool, reuse_port: bool, bind_to_iface: Option<&str>) -> io::Result<Self> {
         let socket = UdpBuilder::new_v4()?;
         if reuse_addr {
             socket.reuse_address(true)?;
@@ -55,6 +55,16 @@ impl DhcpFramed {
         }
 
         let socket = socket.bind(addr)?;
+
+        if let Some(iface) = bind_to_iface {
+            use libc::{setsockopt, SO_BINDTODEVICE, SOL_SOCKET, c_void};
+            use std::os::unix::io::AsRawFd;
+
+            let res = unsafe { setsockopt(socket.as_raw_fd(), SOL_SOCKET, SO_BINDTODEVICE, iface.as_bytes().as_ptr() as *const _ as *const c_void, iface.len() as u32) };
+            if res != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
         let socket = UdpSocket::from_std(socket, &Handle::default())?;
         socket.set_broadcast(true)?;
 

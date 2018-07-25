@@ -6,6 +6,7 @@ mod socket;
 extern crate tokio;
 #[macro_use] extern crate futures;
 extern crate net2;
+extern crate libc;
 
 extern crate protocol;
 

@@ -80,7 +80,7 @@ impl Server {
         static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
     ) -> Result<Self, io::Error> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_SERVER);
-        let socket = DhcpFramed::new(addr, false, false)?;
+        let socket = DhcpFramed::new(addr, false, false, None)?;
 
         let message_builder = MessageBuilder::new(
             server_ip_address,
