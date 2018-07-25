@@ -1,8 +1,10 @@
 //! The original Rust DHCP client implementation.
 
+#[macro_use] mod macros;
 mod client;
 mod backoff;
 mod message;
+mod state;
 
 #[macro_use] extern crate log;
 extern crate tokio;
@@ -19,7 +21,7 @@ extern crate framed;
 pub use self::{
     client::{
         Client,
-        Result,
+        Configuration,
     },
     message::ClientId,
 };

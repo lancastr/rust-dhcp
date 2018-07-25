@@ -19,6 +19,7 @@ use framed::{
     DHCP_PORT_SERVER,
     DHCP_PORT_CLIENT,
 };
+use protocol::MessageType;
 
 use message::MessageBuilder;
 use database::{
@@ -106,80 +107,17 @@ impl Server {
     }
 }
 
-/// By design the pending message must be flushed before sending the next one.
-macro_rules! start_send_or_panic(
-    ($socket:expr, $address:expr, $message:expr) => (
-        if let AsyncSink::NotReady(_) = $socket.start_send(($address, $message))? {
-            panic!("Must wait for poll_complete first");
-        }
-    )
-);
-
-/// Just to move some code from the overwhelmed `poll` method.
-macro_rules! poll_complete_or_continue (
-    ($socket:expr) => (
-        match $socket.poll_complete() {
-            Ok(Async::Ready(_)) => {},
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Err(error) => {
-                warn!("Socket error: {}", error);
-                continue;
-            },
-        }
-    )
-);
-
-/// Just to move some code from the overwhelmed `poll` method.
-macro_rules! poll_or_continue (
-    ($socket:expr) => (
-        match $socket.poll() {
-            Ok(Async::Ready(Some(data))) => data,
-            Ok(Async::Ready(None)) => {
-                warn!("None from socket (unreachable)");
-                continue;
-            },
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Err(error) => {
-                warn!("Unable to parse a packet: {}", error);
-                continue;
-            },
-        };
-    )
-);
-
-/// The passed `Option` must be already validated in `protocol::Message::validate` method.
-macro_rules! unwrap_validated (
-    ($option:expr) => (
-        $option.expect("A bug in DHCP message validation")
-    )
-);
-
-/// Just to move some code from the overwhelmed `poll` method.
-macro_rules! validate_or_continue (
-    ($message:expr, $address:expr) => (
-        match $message.validate() {
-            Ok(dhcp_message_type) => dhcp_message_type,
-            Err(error) => {
-                warn!("The request from {} is invalid: {} {}", $address, error, $message);
-                continue;
-            },
-        };
-    )
-);
-
 impl Future for Server {
     type Item = ();
     type Error = io::Error;
 
     /// Works infinite time.
     fn poll(&mut self) -> Poll<(), io::Error> {
-        use protocol::MessageType::*;
-
         loop {
-            poll_complete_or_continue!(self.socket);
-            let (mut addr, request) = poll_or_continue!(self.socket);
-            let dhcp_message_type = validate_or_continue!(request, addr);
-            info!("{:?} from {}: {}", dhcp_message_type, addr, request);
+            poll_complete!(self.socket);
+            let (mut addr, request) = poll!(self.socket);
+            let dhcp_message_type = validate!(request, addr);
+            log_receive!(request, addr);
 
             /*
             RFC 2131 §4.1
@@ -202,7 +140,7 @@ impl Future for Server {
             };
 
             match dhcp_message_type {
-                DhcpDiscover => {
+                MessageType::DhcpDiscover => {
                     /*
                     RFC 2131 §4.3.1
                     When a server receives a DHCPDISCOVER message from a client, the
@@ -218,13 +156,13 @@ impl Future for Server {
                     ) {
                         Ok(offer) => {
                             let response = self.message_builder.dhcp_discover_to_offer(&request, &offer);
-                            info!("DhcpOffer to {}: {}", addr, response);
-                            start_send_or_panic!(self.socket, addr, response);
+                            log_send!(response, addr);
+                            start_send!(self.socket, addr, response);
                         },
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
                 },
-                DhcpRequest => {
+                MessageType::DhcpRequest => {
                     /*
                     RFC 2131 §4.3.2
                     A DHCPREQUEST message may come from a client responding to a
@@ -252,20 +190,20 @@ impl Future for Server {
 
                     // the client is in SELECTING state
                     if request.options.dhcp_server_id.is_some() {
-                        let address = unwrap_validated!(request.options.address_request);
+                        let address = expect!(request.options.address_request);
                         let lease_time = request.options.address_time;
 
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                info!("DhcpAck to {}: {}", addr, response);
-                                start_send_or_panic!(self.socket, addr, response);
+                                log_send!(response, addr);
+                                start_send!(self.socket, addr, response);
                             },
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.message_builder.dhcp_request_to_nak(&request, &error);
-                                info!("DhcpNak to {}: {}", addr, response);
-                                start_send_or_panic!(self.socket, addr, response);
+                                log_send!(response, addr);
+                                start_send!(self.socket, addr, response);
                             },
                         };
                         continue;
@@ -273,20 +211,20 @@ impl Future for Server {
 
                     // the client is in INIT-REBOOT state
                     if request.client_ip_address.is_unspecified() {
-                        let address = unwrap_validated!(request.options.address_request);
+                        let address = expect!(request.options.address_request);
 
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                                info!("DhcpAck to {}: {}", addr, response);
-                                start_send_or_panic!(self.socket, addr, response);
+                                log_send!(response, addr);
+                                start_send!(self.socket, addr, response);
                             },
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
                                 if let LeaseHasDifferentAddress = error {
                                     let response = self.message_builder.dhcp_request_to_nak(&request, &error);
-                                    info!("DhcpNak to {}: {}", addr, response);
-                                    start_send_or_panic!(self.socket, addr, response);
+                                    log_send!(response, addr);
+                                    start_send!(self.socket, addr, response);
                                 }
                                 /*
                                 RFC 2131 §4.3.2
@@ -303,13 +241,13 @@ impl Future for Server {
                     match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                         Ok(ack) => {
                             let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
-                            info!("DhcpAck to {}: {}", addr, response);
-                            start_send_or_panic!(self.socket, addr, response);
+                            log_send!(response, addr);
+                            start_send!(self.socket, addr, response);
                         },
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
                 },
-                DhcpDecline => {
+                MessageType::DhcpDecline => {
                     /*
                     RFC 2131 §4.3.3
                     If the server receives a DHCPDECLINE message, the client has
@@ -319,14 +257,14 @@ impl Future for Server {
                     a possible configuration problem.
                     */
 
-                    let address = unwrap_validated!(request.options.address_request);
+                    let address = expect!(request.options.address_request);
 
                     match self.database.freeze(&address) {
-                        Ok(_) => info!("Address {:?} has been marked as unavailable", address),
+                        Ok(_) => info!("Address {} has been marked as unavailable", address),
                         Err(error) => warn!("Address freezing error: {}", error.to_string()),
                     };
                 },
-                DhcpRelease => {
+                MessageType::DhcpRelease => {
                     /*
                     RFC 2131 §4.3.4
                     Upon receipt of a DHCPRELEASE message, the server marks the network
@@ -335,14 +273,14 @@ impl Future for Server {
                     subsequent requests from the client.
                     */
 
-                    let address = unwrap_validated!(request.options.address_request);
+                    let address = expect!(request.options.address_request);
 
                     match self.database.deallocate(client_id, &address) {
                         Ok(_) => info!("Address {} has been released", address),
                         Err(error) => warn!("Address releasing error: {}", error.to_string()),
                     };
                 },
-                DhcpInform => {
+                MessageType::DhcpInform => {
                     /*
                     RFC 2131 §4.3.5
                     The server responds to a DHCPINFORM message by sending a DHCPACK
@@ -353,8 +291,8 @@ impl Future for Server {
 
                     let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
                     info!("Address {} has been taken by some client manually", request.client_ip_address);
-                    info!("DhcpAck to {}: {}", addr, response);
-                    start_send_or_panic!(self.socket, addr, response);
+                    log_send!(response, addr);
+                    start_send!(self.socket, addr, response);
                 },
                 _ => {},
             }

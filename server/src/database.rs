@@ -152,7 +152,7 @@ impl Database {
                     lease_time,
                     message: "Offering the current address".to_owned(),
                 };
-                trace!("Offering to client {:?} the current address: {:?}", client_id, offer);
+                trace!("Offering to the client {:?} the current address {}", client_id, offer.address);
                 return Ok(offer);
             }
             trace!("The current address {} is not available", address);
@@ -170,7 +170,7 @@ impl Database {
                     lease_time,
                     message: "Offering the previous address".to_owned(),
                 };
-                trace!("Offering to client {:?} the previous address {:?}", client_id, offer);
+                trace!("Offering to the client {:?} the previous address {}", client_id, offer.address);
                 return Ok(offer);
             }
             trace!("The previous address {} is not available", address);
@@ -188,7 +188,7 @@ impl Database {
                     lease_time,
                     message: "Offering the requested address".to_owned(),
                 };
-                trace!("Offering to client {:?} the requested address: {:?}", client_id, offer);
+                trace!("Offering to the client {:?} the requested address {}", client_id, offer.address);
                 return Ok(offer);
             }
             trace!("The requested address {} is not available", address);
@@ -206,7 +206,7 @@ impl Database {
             lease_time,
             message: "Offering an address from the dynamic pool".to_owned(),
         };
-        trace!("Offering to client {:?} an address from the dynamic pool: {:?}", client_id, offer);
+        trace!("Offering to the client {:?} the address {} from the dynamic pool", client_id, offer.address);
         Ok(offer)
     }
 
@@ -227,13 +227,15 @@ impl Database {
                 }
                 let lease_time = cmp::min(lease_time.unwrap_or(lease.lease_time()), lease.lease_time());
                 self.storage.update_lease(client_id, &mut |lease: &mut Lease| lease.assign(lease_time))?;
-                return Ok(Ack{
+                let ack = Ack{
                     address         : Ipv4Addr::from(lease.address()),
                     lease_time      : lease.lease_time(),
                     renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
                     rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
                     message         : "Successfully assigned".to_owned(),
-                });
+                };
+                trace!("Assigning the address {} to client {:?}", ack.address, client_id);
+                return Ok(ack);
             } else {
                 return Err(Error::OfferNotFound);
             }
@@ -253,13 +255,15 @@ impl Database {
         if let Some(lease) = self.storage.get_lease(&client_id)? {
             if lease.address() == *address {
                 self.storage.update_lease(client_id, &mut |lease: &mut Lease| lease.renew(lease_time))?;
-                Ok(Ack{
+                let ack = Ack{
                     address         : Ipv4Addr::from(lease.address()),
                     lease_time      : lease.lease_time(),
                     renewal_time    : ((lease.lease_time() as f64) * RENEWAL_TIME_FACTOR) as u32,
                     rebinding_time  : ((lease.lease_time() as f64) * REBINDING_TIME_FACTOR) as u32,
                     message         : "Your lease has been renewed".to_owned(),
-                })
+                };
+                trace!("Renewing the address {} for client {:?}", ack.address, client_id);
+                return Ok(ack);
             } else {
                 Err(Error::LeaseHasDifferentAddress)
             }

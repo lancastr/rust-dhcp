@@ -1,5 +1,7 @@
 //! DHCP message type module.
 
+use std::fmt;
+
 /// DHCP message type (RFC 2131 only).
 #[derive(Debug, Clone, Copy)]
 pub enum MessageType {
@@ -14,19 +16,36 @@ pub enum MessageType {
     DhcpRelease,
     DhcpInform,
     // RFC 3203 (not implemented)
-    DhcpForceRenew,
+//    DhcpForceRenew,
     // RFC 4388 (not implemented)
-    DhcpLeaseQuery,
-    DhcpLeaseUnassigned,
-    DhcpLeaseUnknown,
-    DhcpLeaseActive,
+//    DhcpLeaseQuery,
+//    DhcpLeaseUnassigned,
+//    DhcpLeaseUnknown,
+//    DhcpLeaseActive,
     // RFC 6926 (not implemented)
-    DhcpBulkLeaseQuery,
-    DhcpLeaseQueryDone,
+//    DhcpBulkLeaseQuery,
+//    DhcpLeaseQueryDone,
     // RFC 7724 (not implemented)
-    DhcpActiveLeaseQuery,
-    DhcpLeaseQueryStatus,
-    DhcpTls,
+//    DhcpActiveLeaseQuery,
+//    DhcpLeaseQueryStatus,
+//    DhcpTls,
+}
+
+impl fmt::Display for MessageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::MessageType::*;
+        match self {
+            Undefined => write!(f, "UNDEFINED"),
+            DhcpDiscover => write!(f, "DHCPDISCOVER"),
+            DhcpOffer => write!(f, "DHCPOFFER"),
+            DhcpRequest => write!(f, "DHCPREQUEST"),
+            DhcpDecline => write!(f, "DHCPDECLINE"),
+            DhcpAck => write!(f, "DHCPACK"),
+            DhcpNak => write!(f, "DHCPNAK"),
+            DhcpRelease => write!(f, "DHCPRELEASE"),
+            DhcpInform => write!(f, "DHCPINFORM"),
+        }
+    }
 }
 
 impl From<u8> for MessageType {
@@ -43,16 +62,16 @@ impl From<u8> for MessageType {
             6 => DhcpNak,
             7 => DhcpRelease,
             8 => DhcpInform,
-            9 => DhcpForceRenew,
-            10 => DhcpLeaseQuery,
-            11 => DhcpLeaseUnassigned,
-            12 => DhcpLeaseUnknown,
-            13 => DhcpLeaseActive,
-            14 => DhcpBulkLeaseQuery,
-            15 => DhcpLeaseQueryDone,
-            16 => DhcpActiveLeaseQuery,
-            17 => DhcpLeaseQueryStatus,
-            18 => DhcpTls,
+//            9 => DhcpForceRenew,
+//            10 => DhcpLeaseQuery,
+//            11 => DhcpLeaseUnassigned,
+//            12 => DhcpLeaseUnknown,
+//            13 => DhcpLeaseActive,
+//            14 => DhcpBulkLeaseQuery,
+//            15 => DhcpLeaseQueryDone,
+//            16 => DhcpActiveLeaseQuery,
+//            17 => DhcpLeaseQueryStatus,
+//            18 => DhcpTls,
 
             _ => Undefined,
         }

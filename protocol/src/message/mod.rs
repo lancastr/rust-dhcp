@@ -56,17 +56,17 @@ impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f)?;
         writeln!(f, "______________________________HEADER_______________________________________")?;
-        writeln!(f, "operation_code                   | {:?}", self.operation_code)?;
-        writeln!(f, "hardware_type                    | {:?}", self.hardware_type)?;
-        writeln!(f, "hardware_address_length          | {:?}", self.hardware_address_length)?;
-        writeln!(f, "hardware_options                 | {:?}", self.hardware_options)?;
-        writeln!(f, "transaction_id                   | {:?}", self.transaction_id)?;
-        writeln!(f, "seconds                          | {:?}", self.seconds)?;
-        writeln!(f, "is_broadcast                     | {:?}", self.is_broadcast)?;
-        writeln!(f, "client_ip_address                | {:?}", self.client_ip_address)?;
-        writeln!(f, "your_ip_address                  | {:?}", self.your_ip_address)?;
-        writeln!(f, "server_ip_address                | {:?}", self.server_ip_address)?;
-        writeln!(f, "gateway_ip_address               | {:?}", self.gateway_ip_address)?;
+        writeln!(f, "operation_code                   | {}", self.operation_code)?;
+        writeln!(f, "hardware_type                    | {}", self.hardware_type)?;
+        writeln!(f, "hardware_address_length          | {}", self.hardware_address_length)?;
+        writeln!(f, "hardware_options                 | {}", self.hardware_options)?;
+        writeln!(f, "transaction_id                   | {}", self.transaction_id)?;
+        writeln!(f, "seconds                          | {}", self.seconds)?;
+        writeln!(f, "is_broadcast                     | {}", self.is_broadcast)?;
+        writeln!(f, "client_ip_address                | {}", self.client_ip_address)?;
+        writeln!(f, "your_ip_address                  | {}", self.your_ip_address)?;
+        writeln!(f, "server_ip_address                | {}", self.server_ip_address)?;
+        writeln!(f, "gateway_ip_address               | {}", self.gateway_ip_address)?;
         writeln!(f, "client_hardware_address          | {:?}", self.client_hardware_address)?;
         writeln!(f, "server_name                      | {}", self.server_name)?;
         writeln!(f, "boot_filename                    | {}", self.boot_filename)?;

@@ -3,6 +3,7 @@
 
 #[macro_use] extern crate log;
 extern crate tokio;
+#[macro_use] extern crate futures;
 extern crate eui48;
 extern crate rand;
 extern crate env_logger;
@@ -10,7 +11,10 @@ extern crate env_logger;
 extern crate client;
 
 #[allow(unused_imports)]
-use std::net::Ipv4Addr;
+use std::{
+    io,
+    net::Ipv4Addr,
+};
 
 use eui48::MacAddress;
 use tokio::prelude::*;
@@ -19,6 +23,20 @@ use client::{
     Client,
     ClientId,
 };
+
+struct SuperClient(Client);
+
+impl Future for SuperClient {
+    type Item = ();
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        loop {
+            let result = try_ready!(self.0.poll());
+            info!("{:?}", result.expect("The client returned None but it must not"));
+        }
+    }
+}
 
 fn main() {
     std::env::set_var("RUST_BACKTRACE", "1");
@@ -29,19 +47,17 @@ fn main() {
     #[allow(unused_variables)]
     let client_id = args.get(1).unwrap_or(&"666".to_owned()).to_owned();
 
-    let client = Client::new(
+    let client = SuperClient(Client::new(
         ClientId::Mac(MacAddress::new([0x00,0x0c,0x29,0x56,0xab,0xcc])),
         None,
-        Some(Ipv4Addr::new(192,168,0,103)),
         Some(Ipv4Addr::new(192,168,0,100)),
+        None,//Some(Ipv4Addr::new(192,168,0,100)),
         None,//Some(Ipv4Addr::new(192,168,0,15)),
-        None,//Some(1000000),
-    ).expect("Client creating error");
+        Some(60),//Some(1000000),
+    ).expect("Client creating error"));
 
     let future = client
-        .into_future()
-        .map_err(|(error, _client)| println!("Error: {}", error))
-        .map(|(result, _client)| println!("Result: {:?}", result));
+        .map_err(|error| error!("Error: {}", error));
 
     info!("DHCP client started");
     tokio::run(future);

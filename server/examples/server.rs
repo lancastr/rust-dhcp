@@ -17,7 +17,7 @@ fn main() {
     env_logger::init();
 
     let server = server::Server::new(
-        Ipv4Addr::new(192,168,0,103),
+        Ipv4Addr::new(192,168,0,100),
         Some("The test server".to_owned()),
 
         (Ipv4Addr::new(192,168,0,2), Ipv4Addr::new(192,168,0,99)),

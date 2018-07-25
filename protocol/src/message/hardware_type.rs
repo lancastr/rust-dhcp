@@ -1,9 +1,11 @@
 //! DHCP message hardware type module.
 
+use std::fmt;
+
 /// DHCP hardware type.
 ///
 /// Only MAC-48 is implemented.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum HardwareType {
     Undefined,
     Ethernet,
@@ -15,6 +17,16 @@ impl From<u8> for HardwareType {
         match value {
             1 => Ethernet,
             _ => Undefined,
+        }
+    }
+}
+
+impl fmt::Display for HardwareType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::HardwareType::*;
+        match self {
+            Undefined => write!(f, "UNDEFINED"),
+            Ethernet => write!(f, "Ethernet"),
         }
     }
 }

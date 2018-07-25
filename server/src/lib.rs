@@ -1,5 +1,6 @@
 //! The original Rust DHCP server implementation.
 
+#[macro_use] mod macros;
 mod server;
 mod message;
 mod database;

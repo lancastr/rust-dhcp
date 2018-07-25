@@ -53,8 +53,6 @@ impl Message {
     /// # Errors
     /// `io::Error` on parsing error.
     pub fn from_bytes(src: &[u8]) -> io::Result<Self> {
-        println!("{:?}", src);
-
         let mut cursor = ::std::io::Cursor::new(src.as_ref());
         check_remaining!(cursor, SIZE_HEADER_MINIMAL);
 
