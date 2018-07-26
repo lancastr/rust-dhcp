@@ -58,7 +58,7 @@ impl MessageBuilder {
         discover                        : &Message,
         offer                           : &Offer,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.address_time            = Some(offer.lease_time);
         options.dhcp_message_type       = Some(MessageType::DhcpOffer);
         options.dhcp_server_id          = Some(self.server_ip_address);
@@ -97,7 +97,7 @@ impl MessageBuilder {
         request                         : &Message,
         ack                             : &Ack,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.address_time            = Some(ack.lease_time);
         options.dhcp_message_type       = Some(MessageType::DhcpAck);
         options.dhcp_server_id          = Some(self.server_ip_address);
@@ -138,7 +138,7 @@ impl MessageBuilder {
         inform                          : &Message,
         message                         : &str,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.subnet_mask             = Some(self.subnet_mask);
         options.routers                 = Some(self.routers.to_owned());
         options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
@@ -176,7 +176,7 @@ impl MessageBuilder {
         request                         : &Message,
         error                           : &Error,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.dhcp_message_type       = Some(MessageType::DhcpNak);
         options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(error.to_string());

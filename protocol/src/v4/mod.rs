@@ -67,7 +67,7 @@ impl fmt::Display for Message {
         writeln!(f, "your_ip_address                  | {}", self.your_ip_address)?;
         writeln!(f, "server_ip_address                | {}", self.server_ip_address)?;
         writeln!(f, "gateway_ip_address               | {}", self.gateway_ip_address)?;
-        writeln!(f, "client_hardware_address          | {:?}", self.client_hardware_address)?;
+        writeln!(f, "client_hardware_address          | {}", self.client_hardware_address)?;
         writeln!(f, "server_name                      | {}", self.server_name)?;
         writeln!(f, "boot_filename                    | {}", self.boot_filename)?;
         writeln!(f, "______________________________OPTIONS______________________________________")?;

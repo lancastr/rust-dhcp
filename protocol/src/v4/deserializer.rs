@@ -12,7 +12,7 @@ use eui48::{
     EUI48LEN,
 };
 
-use message::{
+use super::{
     Message,
     options::{
         Options,
@@ -85,7 +85,7 @@ impl Message {
                 cursor.advance(SIZE_BOOT_FILENAME);
                 string
             },
-            options: Options::new(),
+            options: Options::default(),
         };
 
         if cursor.get_u32_be() != MAGIC_COOKIE {

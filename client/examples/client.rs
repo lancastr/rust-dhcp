@@ -9,11 +9,16 @@ extern crate rand;
 extern crate env_logger;
 
 extern crate client;
+extern crate framed;
+extern crate protocol;
 
-#[allow(unused_imports)]
 use std::{
     io,
-    net::Ipv4Addr,
+    net::{
+        SocketAddr,
+        IpAddr,
+        Ipv4Addr,
+    },
 };
 
 use eui48::MacAddress;
@@ -22,9 +27,12 @@ use tokio::prelude::*;
 use client::{
     Client,
     ClientId,
+    Command,
 };
+use framed::DhcpFramed;
+use protocol::DHCP_PORT_CLIENT;
 
-struct SuperClient(Client);
+struct SuperClient(Client, u64);
 
 impl Future for SuperClient {
     type Item = ();
@@ -32,9 +40,25 @@ impl Future for SuperClient {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
-            let result = try_ready!(self.0.poll());
-            info!("{:?}", result.expect("The client returned None but it must not"));
+            let result = try_ready!(self.0.poll()).expect("The client returned None but it must not");
+            info!("{:?}", result);
+            self.1 += 1;
+            if self.1 == 5 {
+                self.0.start_send(Command::Release {
+                    message: Some("Releasing".to_owned()),
+                })?;
+//                self.0.start_send(Command::Decline {
+//                    address: result.your_ip_address,
+//                    message: Some("Releasing".to_owned()),
+//                })?;
+//                self.0.start_send(Command::Inform {
+//                    address: result.your_ip_address,
+//                })?;
+                self.0.poll_complete()?;
+                break;
+            }
         }
+        Ok(Async::Ready(()))
     }
 }
 
@@ -43,18 +67,27 @@ fn main() {
     std::env::set_var("RUST_LOG", "client=info");
     env_logger::init();
 
-    let args: Vec<String> = std::env::args().collect();
-    #[allow(unused_variables)]
-    let client_id = args.get(1).unwrap_or(&"666".to_owned()).to_owned();
+    let (sink, stream) = DhcpFramed::new(
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_CLIENT),
+        true,
+        true,
+    ).expect("Socket binding error").split();
+
+    let server_address = Some(Ipv4Addr::new(192,168,0,102));
+    let client_address = None;
+    let address_request = None;
+    let address_time = Some(60);
 
     let client = SuperClient(Client::new(
+        Box::new(stream),
+        Box::new(sink),
         ClientId::Mac(MacAddress::new([0x00,0x0c,0x29,0x56,0xab,0xcc])),
         None,
-        Some(Ipv4Addr::new(192,168,0,100)),
-        None,//Some(Ipv4Addr::new(192,168,0,100)),
-        None,//Some(Ipv4Addr::new(192,168,0,15)),
-        Some(60),//Some(1000000),
-    ).expect("Client creating error"));
+        server_address,
+        client_address,
+        address_request,
+        address_time,
+    ), 0);
 
     let future = client
         .map_err(|error| error!("Error: {}", error));

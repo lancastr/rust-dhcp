@@ -2,7 +2,7 @@
 
 use eui48::EUI48LEN;
 
-use message::{
+use super::{
     Message,
     options::MessageType,
     operation_code::OperationCode,

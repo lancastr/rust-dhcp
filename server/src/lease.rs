@@ -87,7 +87,7 @@ impl Lease {
     /// Releases the address and moves the lease to `Released` state.
     pub fn release(&mut self) {
         // may be released only once
-        if !self.is_released() {
+        if self.is_released() {
             return;
         }
 

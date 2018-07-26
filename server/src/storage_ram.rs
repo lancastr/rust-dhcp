@@ -89,13 +89,11 @@ impl Storage for RamStorage {
         &mut self,
         client_id: &[u8],
         action: &mut FnMut(&mut Lease) -> (),
-    ) -> Result<Option<Lease>, Error> {
-        if let Some(lease) = self.client_lease_map.get_mut(client_id) {
+    ) -> Result<(), Error> {
+        if let Some(ref mut lease) = self.client_lease_map.get_mut(client_id) {
             action(lease);
-            Ok(Some(lease.to_owned()))
-        } else {
-            Ok(None)
         }
+        Ok(())
     }
 
     fn check_frozen(
@@ -103,7 +101,7 @@ impl Storage for RamStorage {
         address: &Ipv4Addr,
     ) -> Result<bool, Error>
     {
-        Ok(self.frozen_addresses.contains(&address))
+        Ok(self.frozen_addresses.contains(address))
     }
 
     fn add_frozen(

@@ -11,7 +11,7 @@ use bytes::{
     BufMut,
 };
 
-use message::{
+use super::{
     Message,
     options::{
         MessageType,

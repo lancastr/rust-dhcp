@@ -13,11 +13,11 @@ use tokio::prelude::Future;
 
 fn main() {
     std::env::set_var("RUST_BACKTRACE", "1");
-    std::env::set_var("RUST_LOG", "server=info");
+    std::env::set_var("RUST_LOG", "server=trace");
     env_logger::init();
 
     let server = server::Server::new(
-        Ipv4Addr::new(192,168,0,100),
+        Ipv4Addr::new(192,168,0,102),
         Some("The test server".to_owned()),
 
         (Ipv4Addr::new(192,168,0,2), Ipv4Addr::new(192,168,0,99)),

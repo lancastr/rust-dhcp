@@ -36,7 +36,7 @@ pub enum Error {
     OfferExpired,
 
     #[fail(display = "The lease has different address")]
-    LeaseHasDifferentAddress,
+    LeaseInvalid,
     #[fail(display = "Lease not found")]
     LeaseNotFound,
 }
@@ -143,7 +143,7 @@ impl Database {
 
         // address allocation case 1
         if let Some(address) = self.client_current_address(client_id)? {
-            if self.is_address_allocated_by(&address, client_id)? {
+            if self.is_address_allocated_by(&address, client_id)? && !self.is_address_frozen(&address)? {
                 // lease time case 1
                 let lease_time = self.offer(&address, client_id, lease_time, reuse_lease_time)?;
 
@@ -154,8 +154,9 @@ impl Database {
                 };
                 trace!("Offering to the client {:?} the current address {}", client_id, offer.address);
                 return Ok(offer);
+            } else {
+                trace!("Client {:?} has no current address", client_id);
             }
-            trace!("The current address {} is not available", address);
         } else {
             trace!("Client {:?} has no current address", client_id);
         }
@@ -172,8 +173,9 @@ impl Database {
                 };
                 trace!("Offering to the client {:?} the previous address {}", client_id, offer.address);
                 return Ok(offer);
+            } else {
+                trace!("The previous address {} is not available", address);
             }
-            trace!("The previous address {} is not available", address);
         } else {
             trace!("Client {:?} has never had an address", client_id);
         }
@@ -190,8 +192,9 @@ impl Database {
                 };
                 trace!("Offering to the client {:?} the requested address {}", client_id, offer.address);
                 return Ok(offer);
+            } else {
+                trace!("The requested address {} is not available", address);
             }
-            trace!("The requested address {} is not available", address);
         } else {
             trace!("Client {:?} does not request an address", client_id);
         }
@@ -265,7 +268,7 @@ impl Database {
                 trace!("Renewing the address {} for client {:?}", ack.address, client_id);
                 return Ok(ack);
             } else {
-                Err(Error::LeaseHasDifferentAddress)
+                Err(Error::LeaseInvalid)
             }
         } else {
             Err(Error::LeaseNotFound)
@@ -299,7 +302,7 @@ impl Database {
         address             : &Ipv4Addr,
     ) -> Result<Ack, Error> {
         if let Some(lease) = self.storage.get_lease(&client_id)? {
-            if lease.address() == *address {
+            if lease.address() == *address && !lease.is_expired() && !lease.is_released() {
                 Ok(Ack {
                     address: Ipv4Addr::from(lease.address()),
                     lease_time: lease.lease_time(),
@@ -308,7 +311,7 @@ impl Database {
                     message: "Your lease is active".to_owned(),
                 })
             } else {
-                Err(Error::LeaseHasDifferentAddress)
+                Err(Error::LeaseInvalid)
             }
         } else {
             Err(Error::LeaseNotFound)

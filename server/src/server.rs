@@ -14,16 +14,16 @@ use tokio::{
 };
 use hostname;
 
-use framed::{
-    DhcpFramed,
+use framed::DhcpFramed;
+use protocol::{
+    MessageType,
     DHCP_PORT_SERVER,
     DHCP_PORT_CLIENT,
 };
-use protocol::MessageType;
 
-use message::MessageBuilder;
+use builder::MessageBuilder;
 use database::{
-    Error::LeaseHasDifferentAddress,
+    Error::LeaseInvalid,
     Database,
 };
 use storage::Storage;
@@ -31,7 +31,7 @@ use storage::Storage;
 /// The struct implementing the `Future` trait.
 pub struct Server {
     socket                  : DhcpFramed,
-    message_builder         : MessageBuilder,
+    builder                 : MessageBuilder,
     database                : Database,
 }
 
@@ -101,7 +101,7 @@ impl Server {
 
         Ok(Server {
             socket,
-            message_builder,
+            builder: message_builder,
             database: storage,
         })
     }
@@ -155,7 +155,7 @@ impl Future for Server {
                         request.options.address_request,
                     ) {
                         Ok(offer) => {
-                            let response = self.message_builder.dhcp_discover_to_offer(&request, &offer);
+                            let response = self.builder.dhcp_discover_to_offer(&request, &offer);
                             log_send!(response, addr);
                             start_send!(self.socket, addr, response);
                         },
@@ -195,13 +195,13 @@ impl Future for Server {
 
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
-                                let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
+                                let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 log_send!(response, addr);
                                 start_send!(self.socket, addr, response);
                             },
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
-                                let response = self.message_builder.dhcp_request_to_nak(&request, &error);
+                                let response = self.builder.dhcp_request_to_nak(&request, &error);
                                 log_send!(response, addr);
                                 start_send!(self.socket, addr, response);
                             },
@@ -215,14 +215,14 @@ impl Future for Server {
 
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
-                                let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
+                                let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 log_send!(response, addr);
                                 start_send!(self.socket, addr, response);
                             },
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
-                                if let LeaseHasDifferentAddress = error {
-                                    let response = self.message_builder.dhcp_request_to_nak(&request, &error);
+                                if let LeaseInvalid = error {
+                                    let response = self.builder.dhcp_request_to_nak(&request, &error);
                                     log_send!(response, addr);
                                     start_send!(self.socket, addr, response);
                                 }
@@ -240,7 +240,7 @@ impl Future for Server {
                     let lease_time = request.options.address_time;
                     match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                         Ok(ack) => {
-                            let response = self.message_builder.dhcp_request_to_ack(&request, &ack);
+                            let response = self.builder.dhcp_request_to_ack(&request, &ack);
                             log_send!(response, addr);
                             start_send!(self.socket, addr, response);
                         },
@@ -258,7 +258,6 @@ impl Future for Server {
                     */
 
                     let address = expect!(request.options.address_request);
-
                     match self.database.freeze(&address) {
                         Ok(_) => info!("Address {} has been marked as unavailable", address),
                         Err(error) => warn!("Address freezing error: {}", error.to_string()),
@@ -273,8 +272,7 @@ impl Future for Server {
                     subsequent requests from the client.
                     */
 
-                    let address = expect!(request.options.address_request);
-
+                    let address = request.client_ip_address;
                     match self.database.deallocate(client_id, &address) {
                         Ok(_) => info!("Address {} has been released", address),
                         Err(error) => warn!("Address releasing error: {}", error.to_string()),
@@ -289,7 +287,7 @@ impl Future for Server {
                     to the client and SHOULD NOT fill in 'yiaddr'.
                     */
 
-                    let response = self.message_builder.dhcp_inform_to_ack(&request, "Accepted");
+                    let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
                     info!("Address {} has been taken by some client manually", request.client_ip_address);
                     log_send!(response, addr);
                     start_send!(self.socket, addr, response);

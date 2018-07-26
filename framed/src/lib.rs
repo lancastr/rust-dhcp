@@ -9,10 +9,4 @@ extern crate net2;
 
 extern crate protocol;
 
-mod constants {
-    pub const DHCP_PORT_SERVER: u16 = 67;
-    pub const DHCP_PORT_CLIENT: u16 = 68;
-}
-
 pub use socket::DhcpFramed;
-pub use constants::*;

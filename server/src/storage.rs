@@ -91,8 +91,6 @@ where
 
     /// Must update the lease associated with the given client if the lease exists.
     ///
-    /// May return the updated lease.
-    ///
     /// # Errors
     /// Must return `Error::UpdateLease(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` if you want to report another error (e.g. connection).
@@ -100,7 +98,7 @@ where
         &mut self,
         client_id: &[u8],
         action: &mut FnMut(&mut Lease) -> (),
-    ) -> Result<Option<Lease>, Error>;
+    ) -> Result<(), Error>;
 
     /// Must return `true` if the given address has been frozen, `false` otherwise.
     ///

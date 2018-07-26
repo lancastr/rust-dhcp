@@ -4,19 +4,13 @@ use std::{
     net::SocketAddr,
 };
 
-use futures::{
-    Async,
-    AsyncSink,
-    Poll,
-    Sink,
-    StartSend,
-    Stream,
-};
 use tokio::{
     io,
+    prelude::*,
     net::UdpSocket,
     reactor::Handle,
 };
+use futures::StartSend;
 use net2::UdpBuilder;
 
 use protocol::*;
@@ -102,7 +96,7 @@ impl Sink for DhcpFramed {
     /// # Errors
     /// `io::Error` on a socket error.
     /// `io::Error` on an encoding error.
-    fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, io::Error> {
+    fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
         if self.pending.is_some() {
             self.poll_complete()?;
             if self.pending.is_some() {
@@ -124,7 +118,7 @@ impl Sink for DhcpFramed {
     ///
     /// # Errors
     /// `io::Error` on a socket error.
-    fn poll_complete(&mut self) -> Poll<(), io::Error> {
+    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
         match self.pending {
             None => return Ok(Async::Ready(())),
             Some((addr, amount)) => {
@@ -148,7 +142,7 @@ impl Sink for DhcpFramed {
     ///
     /// # Errors
     /// `io::Error` on a socket error.
-    fn close(&mut self) -> Poll<(), io::Error> {
+    fn close(&mut self) -> Poll<(), Self::SinkError> {
         self.poll_complete()
     }
 }

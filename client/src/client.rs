@@ -12,18 +12,16 @@ use tokio::{
     io,
     prelude::*,
 };
-use chrono::prelude::*;
+use futures::StartSend;
 use hostname;
-use rand;
 
-use framed::{
-    DhcpFramed,
+use protocol::{
+    Message,
+    MessageType,
     DHCP_PORT_SERVER,
-    DHCP_PORT_CLIENT,
 };
-use protocol::MessageType;
 
-use message::{
+use builder::{
     MessageBuilder,
     ClientId,
 };
@@ -43,18 +41,37 @@ struct RequestOptions {
 /// The `Client` future result type.
 #[derive(Debug, Clone)]
 pub struct Configuration {
-    your_ip_address     : Ipv4Addr,
-    server_ip_address   : Ipv4Addr,
-    subnet_mask         : Option<Ipv4Addr>,
-    routers             : Option<Vec<Ipv4Addr>>,
-    domain_name_servers : Option<Vec<Ipv4Addr>>,
-    static_routes       : Option<Vec<(Ipv4Addr, Ipv4Addr)>>,
+    pub your_ip_address     : Ipv4Addr,
+    pub server_ip_address   : Ipv4Addr,
+    pub subnet_mask         : Option<Ipv4Addr>,
+    pub routers             : Option<Vec<Ipv4Addr>>,
+    pub domain_name_servers : Option<Vec<Ipv4Addr>>,
+    pub static_routes       : Option<Vec<(Ipv4Addr, Ipv4Addr)>>,
 }
+
+/// The commands used for `Sink` to send `DHCPRELEASE`, `DHCPDECLINE` and `DHCPINFORM` messages.
+#[derive(Clone)]
+pub enum Command {
+    Release {
+        message: Option<String>,
+    },
+    Decline {
+        address: Ipv4Addr,
+        message: Option<String>,
+    },
+    Inform {
+        address: Ipv4Addr,
+    },
+}
+
+type DhcpStream = Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync;
+type DhcpSink = Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync;
 
 /// The struct implementing the `Future` trait.
 pub struct Client {
-    socket              : DhcpFramed,
-    message_builder     : MessageBuilder,
+    stream              : Box<DhcpStream>,
+    sink                : Box<DhcpSink>,
+    builder             : MessageBuilder,
     state               : State,
     options             : RequestOptions,
 }
@@ -95,17 +112,20 @@ impl Client {
     /// The server may lease the address for different amount time if it decides so.
     ///
     pub fn new(
+        stream                  : Box<DhcpStream>,
+        sink                    : Box<DhcpSink>,
         client_id               : ClientId,
         hostname                : Option<String>,
         server_address          : Option<Ipv4Addr>,
         client_address          : Option<Ipv4Addr>,
         address_request         : Option<Ipv4Addr>,
         address_time            : Option<u32>,
-    ) -> io::Result<Self> {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_CLIENT);
-        let socket = DhcpFramed::new(addr, true, true)?;
-
-        let hostname: Option<String> = if hostname.is_none() { hostname::get_hostname() } else { None };
+    ) -> Self {
+        let hostname: Option<String> = if hostname.is_none() {
+            hostname::get_hostname()
+        } else {
+            None
+        };
 
         /*
         RFC 2131 §4.4.4
@@ -150,12 +170,13 @@ impl Client {
 
         let state = State::new(destination, dhcp_state, is_broadcast);
 
-        Ok(Client {
-            socket,
-            message_builder,
+        Client {
+            stream,
+            sink,
+            builder: message_builder,
             state,
             options,
-        })
+        }
     }
 }
 
@@ -212,10 +233,10 @@ impl Stream for Client {
     ///
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         loop {
-            poll_complete!(self.socket);
+            poll_complete!(self.sink);
 
-            match self.state.dhcp_state {
-                current @ DhcpState::Init => {
+            match self.state.dhcp_state() {
+                DhcpState::Init => {
                     /*
                     RFC 2131 §4.4.1
                     The client begins in INIT state and forms a DhcpDiscover message.
@@ -223,18 +244,9 @@ impl Stream for Client {
                     the 'requested IP address' and 'IP address lease time' options.
                     */
 
-                    self.state.transaction_id = rand::random::<u32>();
-                    let discover = self.message_builder.discover(
-                        self.state.transaction_id,
-                        self.state.is_broadcast,
-                        self.options.address_request,
-                        self.options.address_time,
-                    );
-                    log_send!(discover, self.state.destination);
-                    start_send!(self.socket, self.state.destination, discover);
-                    self.state.transcend(current, DhcpState::Selecting);
+                    self.state.init_to_selecting();
                 },
-                current @ DhcpState::Selecting => {
+                DhcpState::Selecting => {
                     /*
                     RFC 2131 §4.4.1
                     If the parameters are acceptable, the client records the address of
@@ -243,61 +255,23 @@ impl Stream for Client {
                     DhcpRequest broadcast message.
                     */
 
-                    // Wait for a DHCPOFFER if self.state.dhcp_server_id is unset
-                    if self.state.dhcp_server_id.is_none() {
-                        let (mut addr, response) = match self.socket.poll() {
-                            Ok(Async::Ready(data)) => expect!(data),
-                            Ok(Async::NotReady) => {
-                                let next = poll_timer!(self.state.timer_offer, DhcpState::Init);
-                                self.state.transcend(current, next);
-                                continue;
-                            },
-                            Err(error) => {
-                                warn!("Socket error: {}", error);
-                                continue;
-                            },
-                        };
-
-                        let dhcp_message_type = validate!(response, addr);
-                        log_receive!(response, addr);
-                        check_xid!(self.state.transaction_id, response.transaction_id);
-
-                        if let MessageType::DhcpOffer = dhcp_message_type {} else {
-                            warn!("Got an unexpected DHCP message type {}", dhcp_message_type);
-                            continue;
-                        }
-
-                        self.state.set_destination(expect!(response.options.dhcp_server_id));
-                        self.state.offered_address = response.your_ip_address;
-                        self.state.offered_time = expect!(response.options.address_time);
-                        self.state.requested_at = Utc::now().timestamp() as u32;
-                        self.state.dhcp_server_id = Some(expect!(response.options.dhcp_server_id));
+                    if !self.state.is_discover_sent() {
+                        let request = self.builder.discover(
+                            self.state.xid(),
+                            self.state.is_broadcast(),
+                            self.options.address_request,
+                            self.options.address_time,
+                        );
+                        log_send!(request, self.state.destination());
+                        start_send!(self.sink, self.state.destination(), request);
+                        self.state.set_discover_sent(true);
                     }
 
-                    // self.state.dhcp_server_id is set. Retransmit the DHCPREQUEST
-                    let request = self.message_builder.request_selecting(
-                        self.state.transaction_id,
-                        self.state.is_broadcast,
-                        self.state.offered_address,
-                        Some(self.state.offered_time),
-                        expect!(self.state.dhcp_server_id),
-                    );
-                    log_send!(request, self.state.destination);
-                    start_send!(self.socket, self.state.destination, request);
-                    self.state.transcend(current, DhcpState::Requesting);
-                },
-                current @ DhcpState::Requesting => {
-                    /*
-                    RFC 2131 §4.4.1
-                    Once the DhcpAck message from the server arrives,
-                    the client is initialized and moves to BOUND state.
-                    */
-
-                    let (mut addr, response) = match self.socket.poll() {
+                    let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(data)) => expect!(data),
                         Ok(Async::NotReady) => {
-                            let next = poll_timer!(self.state.timer_ack, DhcpState::Selecting, DhcpState::Init);
-                            self.state.transcend(current, next);
+                            poll_backoff!(self.state.timer_offer);
+                            self.state.set_discover_sent(false);
                             continue;
                         },
                         Err(error) => {
@@ -308,13 +282,58 @@ impl Stream for Client {
 
                     let dhcp_message_type = validate!(response, addr);
                     log_receive!(response, addr);
-                    check_xid!(self.state.transaction_id, response.transaction_id);
+                    check_xid!(self.state.xid(), response.transaction_id);
+                    check_message_type!(dhcp_message_type, MessageType::DhcpOffer);
+
+                    self.state.selecting_to_requesting(
+                        response.your_ip_address,
+                        expect!(response.options.address_time),
+                        Some(expect!(response.options.dhcp_server_id)),
+                    );
+                },
+                current @ DhcpState::Requesting => {
+                    /*
+                    RFC 2131 §4.4.1
+                    Once the DhcpAck message from the server arrives,
+                    the client is initialized and moves to BOUND state.
+                    */
+
+                    if !self.state.is_request_sent() {
+                        let request = self.builder.request_selecting(
+                            self.state.xid(),
+                            self.state.is_broadcast(),
+                            self.state.offered_address(),
+                            Some(self.state.offered_time()),
+                            expect!(self.state.dhcp_server_id()),
+                        );
+                        log_send!(request, self.state.destination());
+                        start_send!(self.sink, self.state.destination(), request);
+                        self.state.set_request_sent(true);
+                    }
+
+                    let (addr, response) = match self.stream.poll() {
+                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::NotReady) => {
+                            if let DhcpState::Init = poll_backoff!(self.state.timer_ack, DhcpState::Selecting, DhcpState::Init) {
+                                self.state.requesting_to_init();
+                            }
+                            self.state.set_request_sent(false);
+                            continue;
+                        },
+                        Err(error) => {
+                            warn!("Socket error: {}", error);
+                            continue;
+                        },
+                    };
+
+                    let dhcp_message_type = validate!(response, addr);
+                    log_receive!(response, addr);
+                    check_xid!(self.state.xid(), response.transaction_id);
 
                     match dhcp_message_type {
                         MessageType::DhcpNak => {
                             warn!("Got {} in {} state", dhcp_message_type, current);
-                            self.state.set_destination_broadcast();
-                            self.state.transcend(current, DhcpState::Init);
+                            self.state.requesting_to_init();
                             continue;
                         },
                         MessageType::DhcpAck => {},
@@ -324,13 +343,12 @@ impl Stream for Client {
                         },
                     }
 
-                    self.state.assigned_address = response.your_ip_address;
-                    self.state.set_timers(
+                    self.state.requesting_to_bound(
+                        response.your_ip_address,
                         response.options.renewal_time,
                         response.options.rebinding_time,
                         expect!(response.options.address_time),
                     );
-                    self.state.transcend(current, DhcpState::Bound);
                     return Ok(Async::Ready(Some(Configuration {
                         your_ip_address     : response.your_ip_address,
                         server_ip_address   : response.server_ip_address,
@@ -341,7 +359,7 @@ impl Stream for Client {
                     })));
                 },
 
-                current @ DhcpState::InitReboot => {
+                DhcpState::InitReboot => {
                     /*
                     RFC 2131 §4.4.2
                     The client begins in INIT-REBOOT state and sends a DhcpRequest
@@ -349,16 +367,7 @@ impl Stream for Client {
                     'requested IP address' option in the DhcpRequest message.
                     */
 
-                    self.state.transaction_id = rand::random::<u32>();
-                    let request = self.message_builder.request_init_reboot(
-                        self.state.transaction_id,
-                        self.state.is_broadcast,
-                        expect!(self.options.address_request),
-                        self.options.address_time,
-                    );
-                    log_send!(request, self.state.destination);
-                    start_send!(self.socket, self.state.destination, request);
-                    self.state.transcend(current, DhcpState::Rebooting);
+                    self.state.initreboot_to_rebooting();
                 },
                 current @ DhcpState::Rebooting => {
                     /*
@@ -368,11 +377,25 @@ impl Stream for Client {
                     initialized and moves to BOUND state.
                     */
 
-                    let (mut addr, response) = match self.socket.poll() {
+                    if !self.state.is_request_sent() {
+                        let request = self.builder.request_init_reboot(
+                            self.state.xid(),
+                            self.state.is_broadcast(),
+                            expect!(self.options.address_request),
+                            self.options.address_time,
+                        );
+                        log_send!(request, self.state.destination());
+                        start_send!(self.sink, self.state.destination(), request);
+                        self.state.set_request_sent(true);
+                    }
+
+                    let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(data)) => expect!(data),
                         Ok(Async::NotReady) => {
-                            let next = poll_timer!(self.state.timer_ack, DhcpState::InitReboot, DhcpState::Init);
-                            self.state.transcend(current, next);
+                            if let DhcpState::Init = poll_backoff!(self.state.timer_ack, DhcpState::InitReboot, DhcpState::Init) {
+                                self.state.rebooting_to_init();
+                            }
+                            self.state.set_request_sent(false);
                             continue;
                         },
                         Err(error) => {
@@ -383,13 +406,12 @@ impl Stream for Client {
 
                     let dhcp_message_type = validate!(response, addr);
                     log_receive!(response, addr);
-                    check_xid!(self.state.transaction_id, response.transaction_id);
+                    check_xid!(self.state.xid(), response.transaction_id);
 
                     match dhcp_message_type {
                         MessageType::DhcpNak => {
                             warn!("Got {} in {} state", dhcp_message_type, current);
-                            self.state.set_destination_broadcast();
-                            self.state.transcend(current, DhcpState::InitReboot);
+                            self.state.rebooting_to_init();
                             continue;
                         },
                         MessageType::DhcpAck => {},
@@ -399,12 +421,13 @@ impl Stream for Client {
                         },
                     }
 
-                    self.state.set_timers(
+                    self.state.rebooting_to_bound(
+                        response.your_ip_address,
                         response.options.renewal_time,
                         response.options.rebinding_time,
                         expect!(response.options.address_time),
+                        Some(expect!(response.options.dhcp_server_id)),
                     );
-                    self.state.transcend(current, DhcpState::Bound);
                     return Ok(Async::Ready(Some(Configuration {
                         your_ip_address     : response.your_ip_address,
                         server_ip_address   : response.server_ip_address,
@@ -415,55 +438,209 @@ impl Stream for Client {
                     })));
                 },
 
-                current @ DhcpState::Bound => {
-                    if let Some(ref mut timer) = self.state.timer_renewal {
-                        match timer.poll() {
-                            Ok(Async::Ready(_)) => {
-                                info!("Entering RENEWING state");
-                                self.state.dhcp_state = DhcpState::Renewing;
-                                continue;
-                            },
-                            Ok(Async::NotReady) => return Ok(Async::NotReady),
-                            Err(error) => panic!("Timer error: {}", error),
-                        }
-                    } else {
-                        panic!("Timer is None in {} state", current);
-                    }
-                },
-                current @ DhcpState::Renewing => {
-                    if let Some(ref mut timer) = self.state.timer_rebinding {
-                        match timer.poll() {
-                            Ok(Async::Ready(_)) => {
-                                info!("Entering REBINDING state");
-                                self.state.dhcp_state = DhcpState::Rebinding;
-                                continue;
-                            },
-                            Ok(Async::NotReady) => return Ok(Async::NotReady),
-                            Err(error) => panic!("Timer error: {}", error),
-                        }
-                    } else {
-                        panic!("Timer is None in {} state", current);
-                    }
-                },
-                current @ DhcpState::Rebinding => {
-                    if let Some(ref mut timer) = self.state.timer_expiration {
-                        match timer.poll() {
-                            Ok(Async::Ready(_)) => {
-                                info!("Reverting to INIT state");
-                                // A new timer must be constructed for the SELECTING state
-                                self.state.timer_offer = None;
+                DhcpState::Bound => {
+                    /*
+                    RFC 2131 §4.4.5
+                    At time T1 the client moves to RENEWING state and sends (via unicast)
+                    a DHCPREQUEST message to the server to extend its lease.  The client
+                    sets the 'ciaddr' field in the DHCPREQUEST to its current network
+                    address. The client records the local time at which the DHCPREQUEST
+                    message is sent for computation of the lease expiration time.  The
+                    client MUST NOT include a 'server identifier' in the DHCPREQUEST
+                    message.
+                    */
 
-                                self.state.dhcp_state = DhcpState::Init;
-                                continue;
-                            },
-                            Ok(Async::NotReady) => return Ok(Async::NotReady),
-                            Err(error) => panic!("Timer error: {}", error),
-                        }
-                    } else {
-                        panic!("Timer is None in {} state", current);
+                    poll_delay!(self.state.timer_renewal);
+                    self.state.bound_to_renewing();
+                },
+                DhcpState::Renewing => {
+                    /*
+                    RFC 2131 §4.4.5
+                    If no DHCPACK arrives before time T2, the client moves to REBINDING
+                    state and sends (via broadcast) a DHCPREQUEST message to extend its
+                    lease.  The client sets the 'ciaddr' field in the DHCPREQUEST to its
+                    current network address.  The client MUST NOT include a 'server
+                    identifier' in the DHCPREQUEST message.
+                    */
+
+                    if !self.state.is_request_sent() {
+                        let request = self.builder.request_renew(
+                            self.state.xid(),
+                            self.state.is_broadcast(),
+                            self.state.assigned_address(),
+                            self.options.address_time,
+                        );
+                        log_send!(request, self.state.destination());
+                        start_send!(self.sink, self.state.destination(), request);
+                        self.state.set_request_sent(true);
                     }
+
+                    let (addr, response) = match self.stream.poll() {
+                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::NotReady) => {
+                            if let DhcpState::Rebinding = poll_forthon!(self.state.timer_rebinding, DhcpState::Renewing, DhcpState::Rebinding) {
+                                self.state.renewing_to_rebinding();
+                            }
+                            self.state.set_request_sent(false);
+                            continue;
+                        },
+                        Err(error) => {
+                            warn!("Socket error: {}", error);
+                            continue;
+                        },
+                    };
+
+                    let dhcp_message_type = validate!(response, addr);
+                    log_receive!(response, addr);
+                    check_xid!(self.state.xid(), response.transaction_id);
+                    check_message_type!(dhcp_message_type, MessageType::DhcpAck);
+
+                    self.state.renewing_to_bound(
+                        response.your_ip_address,
+                        response.options.renewal_time,
+                        response.options.rebinding_time,
+                        expect!(response.options.address_time),
+                    );
+                    return Ok(Async::Ready(Some(Configuration {
+                        your_ip_address     : response.your_ip_address,
+                        server_ip_address   : response.server_ip_address,
+                        subnet_mask         : response.options.subnet_mask,
+                        routers             : response.options.routers,
+                        domain_name_servers : response.options.domain_name_servers,
+                        static_routes       : response.options.static_routes,
+                    })));
+                },
+                DhcpState::Rebinding => {
+                    /*
+                    RFC 2131 §4.4.5
+                    If the lease expires before the client receives a DHCPACK, the client
+                    moves to INIT state, MUST immediately stop any other network
+                    processing and requests network initialization parameters as if the
+                    client were uninitialized.  If the client then receives a DHCPACK
+                    allocating that client its previous network address, the client
+                    SHOULD continue network processing.  If the client is given a new
+                    network address, it MUST NOT continue using the previous network
+                    address and SHOULD notify the local users of the problem.
+                    */
+
+                    if !self.state.is_request_sent() {
+                        let request = self.builder.request_renew(
+                            self.state.xid(),
+                            self.state.is_broadcast(),
+                            self.state.assigned_address(),
+                            self.options.address_time,
+                        );
+                        log_send!(request, self.state.destination());
+                        start_send!(self.sink, self.state.destination(), request);
+                        self.state.set_request_sent(true);
+                    }
+
+                    let (addr, response) = match self.stream.poll() {
+                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::NotReady) => {
+                            if let DhcpState::Init = poll_forthon!(self.state.timer_expiration, DhcpState::Rebinding, DhcpState::Init) {
+                                warn!("Unable to extend the expired lease!");
+                                self.state.rebinding_to_init();
+                            }
+                            self.state.set_request_sent(false);
+                            continue;
+                        },
+                        Err(error) => {
+                            warn!("Socket error: {}", error);
+                            continue;
+                        },
+                    };
+
+                    let dhcp_message_type = validate!(response, addr);
+                    log_receive!(response, addr);
+                    check_xid!(self.state.xid(), response.transaction_id);
+                    check_message_type!(dhcp_message_type, MessageType::DhcpAck);
+
+                    self.state.rebinding_to_bound(
+                        response.your_ip_address,
+                        response.options.renewal_time,
+                        response.options.rebinding_time,
+                        expect!(response.options.address_time),
+                    );
+                    return Ok(Async::Ready(Some(Configuration {
+                        your_ip_address     : response.your_ip_address,
+                        server_ip_address   : response.server_ip_address,
+                        subnet_mask         : response.options.subnet_mask,
+                        routers             : response.options.routers,
+                        domain_name_servers : response.options.domain_name_servers,
+                        static_routes       : response.options.static_routes,
+                    })));
                 },
             }
         }
+    }
+}
+
+impl Sink for Client {
+    type SinkItem = Command;
+    type SinkError = io::Error;
+
+    /// Translates a `Command` into a DHCP message and sends to the user provided `Sink`.
+    fn start_send(&mut self, command: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
+        let (request, destination) = match command {
+            Command::Release{ref message} => {
+                let dhcp_server_id = match self.state.dhcp_server_id() {
+                    Some(dhcp_server_id) => dhcp_server_id,
+                    None => return Err(io::Error::new(io::ErrorKind::AddrNotAvailable, "Nothing to release")),
+                };
+                let destination = SocketAddr::new(IpAddr::V4(dhcp_server_id), DHCP_PORT_SERVER);
+                let request = self.builder.release(
+                    self.state.xid(),
+                    self.state.assigned_address(),
+                    dhcp_server_id,
+                    message.to_owned(),
+                );
+                (request, destination)
+            },
+            Command::Decline{ref address, ref message} => {
+                let dhcp_server_id = match self.state.dhcp_server_id() {
+                    Some(dhcp_server_id) => dhcp_server_id,
+                    None => return Err(io::Error::new(io::ErrorKind::AddrNotAvailable, "Nothing to decline")),
+                };
+                let destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255,255,255,255)), DHCP_PORT_SERVER);
+                let request = self.builder.decline(
+                    self.state.xid(),
+                    address.to_owned(),
+                    dhcp_server_id,
+                    message.to_owned(),
+                );
+                (request, destination)
+            },
+            Command::Inform{ref address} => {
+                let dhcp_server_id = match self.state.dhcp_server_id() {
+                    Some(dhcp_server_id) => dhcp_server_id,
+                    None => Ipv4Addr::new(255,255,255,255),
+                };
+                let destination = SocketAddr::new(IpAddr::V4(dhcp_server_id), DHCP_PORT_SERVER);
+                let request = self.builder.inform(
+                    self.state.xid(),
+                    self.state.is_broadcast(),
+                    address.to_owned(),
+                );
+                (request, destination)
+            },
+        };
+
+        log_send!(request, destination);
+        match self.sink.start_send((destination, request)) {
+            Ok(AsyncSink::Ready) => Ok(AsyncSink::Ready),
+            Ok(AsyncSink::NotReady(_item)) => Ok(AsyncSink::NotReady(command)),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Just a proxy.
+    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
+        self.sink.poll_complete()
+    }
+
+    /// Just a proxy.
+    fn close(&mut self) -> Poll<(), Self::SinkError> {
+        self.poll_complete()
     }
 }

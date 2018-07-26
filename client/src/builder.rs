@@ -59,7 +59,7 @@ impl MessageBuilder {
         address_request                 : Option<Ipv4Addr>,
         address_time                    : Option<u32>,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.address_request         = address_request;
         options.address_time            = address_time;
@@ -99,7 +99,7 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
         dhcp_server_id                  : Ipv4Addr,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.address_request         = Some(address_request);
         options.address_time            = address_time;
@@ -139,7 +139,7 @@ impl MessageBuilder {
         address_request                 : Ipv4Addr,
         address_time                    : Option<u32>,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.address_request         = Some(address_request);
         options.address_time            = address_time;
@@ -171,14 +171,14 @@ impl MessageBuilder {
     }
 
     /// Creates a `DHCPREQUEST` in `BOUND`, `RENEWING` or `REBINDING` state.
-    pub fn request_bound_renewing_rebinding(
+    pub fn request_renew(
         &self,
         transaction_id                  : u32,
         is_broadcast                    : bool,
         client_ip_address               : Ipv4Addr,
         address_time                    : Option<u32>,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.address_time            = address_time;
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
@@ -215,7 +215,7 @@ impl MessageBuilder {
         is_broadcast                    : bool,
         client_ip_address               : Ipv4Addr,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.dhcp_message_type       = Some(MessageType::DhcpInform);
         options.parameter_list          = Some(Self::parameter_list());
@@ -252,7 +252,7 @@ impl MessageBuilder {
         dhcp_server_id                  : Ipv4Addr,
         dhcp_message                    : Option<String>,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.dhcp_message_type       = Some(MessageType::DhcpRelease);
         options.dhcp_server_id          = Some(dhcp_server_id);
@@ -290,7 +290,7 @@ impl MessageBuilder {
         dhcp_server_id                  : Ipv4Addr,
         dhcp_message                    : Option<String>,
     ) -> Message {
-        let mut options = Options::new();
+        let mut options = Options::default();
         options.hostname                = self.hostname.to_owned();
         options.address_request         = Some(requested_address);
         options.dhcp_message_type       = Some(MessageType::DhcpDecline);

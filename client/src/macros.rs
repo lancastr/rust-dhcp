@@ -72,12 +72,21 @@ macro_rules! check_xid (
 );
 
 /// Just to move some code from the overwhelmed `poll` method.
-macro_rules! poll_timer (
-    ($timer:expr, $revert:expr) => (
-        if let Some(ref mut timer) = $timer {
-            match timer.poll() {
-                Ok(Async::Ready(Some(_))) => return Err(io::Error::new(io::ErrorKind::TimedOut, "Timeout")),
-                Ok(Async::Ready(None)) => $revert,
+macro_rules! check_message_type (
+    ($message:expr, $needed:pat) => (
+        if let $needed = $message {} else {
+            warn!("Got an unexpected DHCP message type {}", $message);
+            continue;
+        }
+    );
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! poll_delay (
+    ($delay:expr) => (
+        if let Some(ref mut delay) = $delay {
+            match delay.poll() {
+                Ok(Async::Ready(_)) => {},
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Err(error) => panic!("Timer error: {}", error),
             }
@@ -85,11 +94,62 @@ macro_rules! poll_timer (
             panic!("A bug in the timer setting logic");
         }
     );
-    ($timer:expr, $revert:expr, $restart:expr) => (
-        if let Some(ref mut timer) = $timer {
-            match timer.poll() {
-                Ok(Async::Ready(Some(_))) => $restart,
-                Ok(Async::Ready(None)) => $revert,
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! poll_backoff (
+    ($backoff:expr) => (
+        if let Some(ref mut backoff) = $backoff {
+            match backoff.poll() {
+                Ok(Async::Ready(Some((secs, expired)))) => {
+                    warn!("No responses after {} seconds", secs);
+                    if expired {
+                        return Err(io::Error::new(io::ErrorKind::TimedOut, "Timeout"));
+                    }
+                },
+                Ok(Async::Ready(None)) => panic!("Timer returned None"),
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err(error) => panic!("Timer error: {}", error),
+            }
+        } else {
+            panic!("A bug in the timer setting logic");
+        }
+    );
+    ($backoff:expr, $revert:expr, $restart:expr) => (
+        if let Some(ref mut backoff) = $backoff {
+            match backoff.poll() {
+                Ok(Async::Ready(Some((secs, expired)))) => {
+                    warn!("No responses after {} seconds", secs);
+                    if expired {
+                        $restart
+                    } else {
+                        $revert
+                    }
+                },
+                Ok(Async::Ready(None)) => panic!("Timer returned None"),
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err(error) => panic!("Timer error: {}", error),
+            }
+        } else {
+            panic!("A bug in the timer setting logic");
+        }
+    );
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! poll_forthon (
+    ($forthon:expr, $revert:expr, $restart:expr) => (
+        if let Some(ref mut forthon) = $forthon {
+            match forthon.poll() {
+                Ok(Async::Ready(Some((secs, expired)))) => {
+                    warn!("No responses after {} seconds", secs);
+                    if expired {
+                        $restart
+                    } else {
+                        $revert
+                    }
+                },
+                Ok(Async::Ready(None)) => panic!("Timer returned None"),
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Err(error) => panic!("Timer error: {}", error),
             }

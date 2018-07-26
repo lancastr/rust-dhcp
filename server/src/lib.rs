@@ -2,7 +2,7 @@
 
 #[macro_use] mod macros;
 mod server;
-mod message;
+mod builder;
 mod database;
 mod storage;
 mod storage_ram;

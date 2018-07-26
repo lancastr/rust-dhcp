@@ -3,7 +3,8 @@
 #[macro_use] mod macros;
 mod client;
 mod backoff;
-mod message;
+mod forthon;
+mod builder;
 mod state;
 
 #[macro_use] extern crate log;
@@ -22,6 +23,7 @@ pub use self::{
     client::{
         Client,
         Configuration,
+        Command,
     },
-    message::ClientId,
+    builder::ClientId,
 };

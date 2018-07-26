@@ -4,10 +4,10 @@ extern crate bytes;
 extern crate eui48;
 #[macro_use] extern crate failure;
 
-mod message;
+mod v4;
 
 pub use self::{
-    message::{
+    v4::{
         Message,
         OperationCode,
         HardwareType,
@@ -19,3 +19,6 @@ pub use self::{
         constants::*,
     },
 };
+
+pub const DHCP_PORT_SERVER: u16 = 67;
+pub const DHCP_PORT_CLIENT: u16 = 68;
