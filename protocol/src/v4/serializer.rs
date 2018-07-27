@@ -32,8 +32,8 @@ macro_rules! check_remaining(
 impl Message {
     /// DHCP message serialization.
     ///
-    /// # Panics
-    /// If `dst` is too small. Consider at least 1024 bytes.
+    /// # Errors
+    /// `io::Error` if the buffer is too small.
     pub fn to_bytes(&self, dst: &mut [u8]) -> io::Result<usize> {
         use OptionTag::*;
 

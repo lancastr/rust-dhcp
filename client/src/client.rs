@@ -146,6 +146,14 @@ impl Client {
         let (destination, is_broadcast) = if let Some(ip) = server_address {
             (ip, false)
         } else {
+            /*
+            RFC 2131 §4.1
+            DHCP messages broadcast by a client prior to that client obtaining
+            its IP address must have the source address field in the IP header
+            set to 0.
+
+            Note: must be done with the external user provided Stream+Sink abstraction.
+            */
             (Ipv4Addr::new(255,255,255,255), true)
         };
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);

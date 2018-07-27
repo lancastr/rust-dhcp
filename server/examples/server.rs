@@ -6,18 +6,23 @@ extern crate tokio;
 extern crate env_logger;
 
 extern crate server;
+extern crate protocol;
 
 use std::net::Ipv4Addr;
 
 use tokio::prelude::Future;
+
+use protocol::DHCP_PORT_SERVER;
 
 fn main() {
     std::env::set_var("RUST_BACKTRACE", "1");
     std::env::set_var("RUST_LOG", "server=trace");
     env_logger::init();
 
+    let server_ip_address = Ipv4Addr::new(192,168,0,4);
+
     let server = server::Server::new(
-        Ipv4Addr::new(192,168,0,102),
+        server_ip_address,
         Some("The test server".to_owned()),
 
         (Ipv4Addr::new(192,168,0,2), Ipv4Addr::new(192,168,0,99)),
@@ -26,13 +31,13 @@ fn main() {
 
         Ipv4Addr::new(255,255,0,0),
         vec![Ipv4Addr::new(192,168,0,1)],
-        vec![Ipv4Addr::new(8,8,8,8), Ipv4Addr::new(8,8,4,4)],
-        vec![(Ipv4Addr::new(192,168,0,12), Ipv4Addr::new(192,168,0,12))],
+        vec![Ipv4Addr::new(192,168,0,1)],
+        vec![],
     ).expect("Server creating error");
 
     let future = server
         .map_err(|error| error!("Error: {}", error));
 
-    info!("DHCP server started");
+    info!("DHCP server started on {}:{}", server_ip_address, DHCP_PORT_SERVER);
     tokio::run(future);
 }

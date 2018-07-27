@@ -51,7 +51,7 @@ impl Message {
     /// DHCP message deserialization.
     ///
     /// # Errors
-    /// `io::Error` on parsing error.
+    /// `io::Error` if the packet is abrupted, too small or contains invalid length octets.
     pub fn from_bytes(src: &[u8]) -> io::Result<Self> {
         let mut cursor = ::std::io::Cursor::new(src.as_ref());
         check_remaining!(cursor, SIZE_HEADER_MINIMAL);

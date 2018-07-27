@@ -35,7 +35,7 @@ pub struct DhcpFramed {
 }
 
 impl DhcpFramed {
-    /// Binds to addr and returns a future.
+    /// Binds to `addr` and returns a `Stream+Sink` UDP socket abstraction.
     pub fn new(addr: SocketAddr, reuse_addr: bool, reuse_port: bool) -> io::Result<Self> {
         let socket = UdpBuilder::new_v4()?;
         if reuse_addr {
@@ -65,7 +65,7 @@ impl Stream for DhcpFramed {
     type Item = (SocketAddr, Message);
     type Error = io::Error;
 
-    /// Returns `Ok(Async::Ready(Some(())))` on successful
+    /// Returns `Ok(Async::Ready(_))` on successful
     /// both read from socket and decoding the message.
     ///
     /// # Errors
@@ -90,8 +90,7 @@ impl Sink for DhcpFramed {
     /// Returns `Ok(AsyncSink::Ready)` on successful sending or
     /// storing the data in order to send it when the socket is ready.
     ///
-    /// Returns `Ok(AsyncSink::NotReady(item))` if there is pending data
-    /// or the socket is not ready for sending.
+    /// Returns `Ok(AsyncSink::NotReady(item))` if there is pending data.
     ///
     /// # Errors
     /// `io::Error` on a socket error.
@@ -136,9 +135,7 @@ impl Sink for DhcpFramed {
         Ok(Async::Ready(()))
     }
 
-    /// Just tries to flush the socket.
-    ///
-    /// Returns the same as the `poll_complete` method.
+    /// Just a `poll_complete` proxy.
     ///
     /// # Errors
     /// `io::Error` on a socket error.

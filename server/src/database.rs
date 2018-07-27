@@ -30,15 +30,15 @@ pub enum Error {
 
     #[fail(display = "The requested address is not offered")]
     OfferNotFound,
-    #[fail(display = "The offer address is different")]
-    OfferHasDifferentAddress,
+    #[fail(display = "The offer is invalid")]
+    OfferInvalid,
     #[fail(display = "The offer is expired")]
     OfferExpired,
 
-    #[fail(display = "The lease has different address")]
-    LeaseInvalid,
     #[fail(display = "Lease not found")]
     LeaseNotFound,
+    #[fail(display = "The lease is invalid")]
+    LeaseInvalid,
 }
 
 impl From<storage::Error> for Error {
@@ -79,9 +79,8 @@ pub struct Database {
     storage                 : Box<Storage>,
 }
 
-#[allow(dead_code)]
 impl Database {
-    /// Creates a new storage with specified static and dynamic address pools.
+    /// Creates a new storage with the specified static and dynamic address pools.
     pub fn new(
         static_address_range    : (Ipv4Addr, Ipv4Addr),
         dynamic_address_range   : (Ipv4Addr, Ipv4Addr),
@@ -146,7 +145,6 @@ impl Database {
             if self.is_address_allocated_by(&address, client_id)? && !self.is_address_frozen(&address)? {
                 // lease time case 1
                 let lease_time = self.offer(&address, client_id, lease_time, reuse_lease_time)?;
-
                 let offer = Offer {
                     address,
                     lease_time,
@@ -165,7 +163,6 @@ impl Database {
         if let Some(address) = self.client_last_address(client_id)? {
             if self.is_address_available(&address)? {
                 let lease_time = self.offer(&address, client_id, lease_time, false)?;
-
                 let offer = Offer{
                     address,
                     lease_time,
@@ -182,9 +179,8 @@ impl Database {
 
         // address allocation case 3
         if let Some(address) = requested_address {
-            if self.is_address_available(&address)? && self.is_address_in_static_pool(&address) {
+            if self.is_address_available(&address)? {
                 let lease_time = self.offer(&address, client_id, lease_time, false)?;
-
                 let offer = Offer{
                     address,
                     lease_time,
@@ -199,11 +195,9 @@ impl Database {
             trace!("Client {:?} does not request an address", client_id);
         }
 
-        // address allocation case 4
-        // giaddr stuff not implemented
+        // address allocation case 4, giaddr stuff not implemented
         let address = self.get_dynamic_available()?.ok_or(Error::DynamicPoolExhausted)?;
         let lease_time = self.offer(&address, client_id, lease_time, false)?;
-
         let offer = Offer{
             address,
             lease_time,
@@ -223,7 +217,7 @@ impl Database {
         if let Some(lease) = self.storage.get_lease(&client_id)? {
             if lease.is_offered() {
                 if lease.address() != *address {
-                    return Err(Error::OfferHasDifferentAddress);
+                    return Err(Error::OfferInvalid);
                 }
                 if lease.is_offer_expired() {
                     return Err(Error::OfferExpired)
@@ -254,7 +248,6 @@ impl Database {
         lease_time          : Option<u32>,
     ) -> Result<Ack, Error> {
         let lease_time = cmp::min(lease_time.unwrap_or(DEFAULT_LEASE_TIME), MAX_LEASE_TIME);
-
         if let Some(lease) = self.storage.get_lease(&client_id)? {
             if lease.address() == *address {
                 self.storage.update_lease(client_id, &mut |lease: &mut Lease| lease.renew(lease_time))?;
@@ -286,7 +279,7 @@ impl Database {
         Ok(())
     }
 
-    /// Freezes an address as a response to a `DHCPDECLINE` message.
+    /// Freezes an address due to a `DHCPDECLINE` message.
     pub fn freeze(
         &mut self,
         address             : &Ipv4Addr,
@@ -295,7 +288,7 @@ impl Database {
         Ok(())
     }
 
-    /// Checks the address of a client in `INIT-REBOOT` state.
+    /// Checks the address of a client in the `INIT-REBOOT` state.
     pub fn check(
         &self,
         client_id           : &[u8],
@@ -330,7 +323,11 @@ impl Database {
         let mut lease_time = lease_time;
         if reuse_lease_time {
             self.storage.get_lease(client_id)?
-                .map(|lease| lease_time = lease.expires_after());
+                .map(|lease| {
+                    if lease.is_active() {
+                        lease_time = lease.expires_after();
+                    }
+                });
         }
 
         self.storage.add_lease(client_id, Lease::new(address.to_owned(), lease_time))?;

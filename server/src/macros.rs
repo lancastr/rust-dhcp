@@ -2,9 +2,25 @@
 
 /// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send (
-    ($socket:expr, $address:expr, $message:expr) => (
-        if let AsyncSink::NotReady(_) = $socket.start_send(($address, $message))? {
+    ($socket:expr, $ip:expr, $message:expr) => (
+        let destination = SocketAddr::new(IpAddr::V4($ip), DHCP_PORT_CLIENT);
+        if let AsyncSink::NotReady(_) = $socket.start_send((destination, $message))? {
             panic!("Must wait for poll_complete first");
+        }
+    );
+);
+
+/// Chooses the destination IP according to RFC 2131 rules.
+macro_rules! choose_destination (
+    ($request:expr, $response:expr) => (
+        if !$request.client_ip_address.is_unspecified() {
+            ($request.client_ip_address, false)
+        } else {
+            if $request.is_broadcast {
+                (Ipv4Addr::new(255,255,255,255), false)
+            } else {
+                ($response.your_ip_address, true)
+            }
         }
     );
 );
@@ -46,8 +62,8 @@ macro_rules! poll (
 
 /// Just to move some code from the overwhelmed `poll` method.
 macro_rules! log_send(
-    ($message:expr, $destination:expr) => (
-        info!("Sending {} to {}", expect!($message.options.dhcp_message_type), $destination.ip());
+    ($message:expr, $ip:expr) => (
+        info!("Sending {} to {}", expect!($message.options.dhcp_message_type), $ip);
         debug!("{}", $message);
     );
 );

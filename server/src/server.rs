@@ -115,7 +115,7 @@ impl Future for Server {
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
             poll_complete!(self.socket);
-            let (mut addr, request) = poll!(self.socket);
+            let (addr, request) = poll!(self.socket);
             let dhcp_message_type = validate!(request, addr);
             log_receive!(request, addr);
 
@@ -130,9 +130,6 @@ impl Future for Server {
             address and 'yiaddr' address. In all cases, when 'giaddr' is zero,
             the server broadcasts any DHCPNAK messages to 0xffffffff.
             */
-            if !request.client_ip_address.is_unspecified() {
-                addr = SocketAddr::new(IpAddr::V4(request.client_ip_address), DHCP_PORT_CLIENT)
-            }
 
             let client_id = match request.options.client_id {
                 Some(ref client_id) => client_id.as_ref(),
@@ -156,8 +153,9 @@ impl Future for Server {
                     ) {
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
-                            log_send!(response, addr);
-                            start_send!(self.socket, addr, response);
+                            let (destination, _arp) = choose_destination!(request, response);
+                            log_send!(response, destination);
+                            start_send!(self.socket, destination, response);
                         },
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
@@ -188,7 +186,7 @@ impl Future for Server {
                           requested-ip  = request.options.address_request
                     */
 
-                    // the client is in SELECTING state
+                    // the client is in the SELECTING state
                     if request.options.dhcp_server_id.is_some() {
                         let address = expect!(request.options.address_request);
                         let lease_time = request.options.address_time;
@@ -196,35 +194,39 @@ impl Future for Server {
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                log_send!(response, addr);
-                                start_send!(self.socket, addr, response);
+                                let (destination, _arp) = choose_destination!(request, response);
+                                log_send!(response, destination);
+                                start_send!(self.socket, destination, response);
                             },
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.builder.dhcp_request_to_nak(&request, &error);
-                                log_send!(response, addr);
-                                start_send!(self.socket, addr, response);
+                                let destination = Ipv4Addr::new(255,255,255,255);
+                                log_send!(response, destination);
+                                start_send!(self.socket, destination, response);
                             },
                         };
                         continue;
                     }
 
-                    // the client is in INIT-REBOOT state
+                    // the client is in the INIT-REBOOT state
                     if request.client_ip_address.is_unspecified() {
                         let address = expect!(request.options.address_request);
 
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                log_send!(response, addr);
-                                start_send!(self.socket, addr, response);
+                                let (destination, _arp) = choose_destination!(request, response);
+                                log_send!(response, destination);
+                                start_send!(self.socket, destination, response);
                             },
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
                                 if let LeaseInvalid = error {
                                     let response = self.builder.dhcp_request_to_nak(&request, &error);
-                                    log_send!(response, addr);
-                                    start_send!(self.socket, addr, response);
+                                    let destination = Ipv4Addr::new(255,255,255,255);
+                                    log_send!(response, destination);
+                                    start_send!(self.socket, destination, response);
                                 }
                                 /*
                                 RFC 2131 §4.3.2
@@ -236,13 +238,14 @@ impl Future for Server {
                         continue;
                     }
 
-                    // the client is in RENEWING or REBINDING state
+                    // the client is in the RENEWING or REBINDING state
                     let lease_time = request.options.address_time;
                     match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                            log_send!(response, addr);
-                            start_send!(self.socket, addr, response);
+                            let (destination, _arp) = choose_destination!(request, response);
+                            log_send!(response, destination);
+                            start_send!(self.socket, destination, response);
                         },
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
@@ -287,10 +290,11 @@ impl Future for Server {
                     to the client and SHOULD NOT fill in 'yiaddr'.
                     */
 
-                    let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
                     info!("Address {} has been taken by some client manually", request.client_ip_address);
-                    log_send!(response, addr);
-                    start_send!(self.socket, addr, response);
+                    let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
+                    let (destination, _arp) = choose_destination!(request, response);
+                    log_send!(response, destination);
+                    start_send!(self.socket, destination, response);
                 },
                 _ => {},
             }

@@ -75,12 +75,12 @@ impl MessageBuilder {
             hardware_options            : 0u8,
 
             transaction_id              : discover.transaction_id,
-            seconds                     : 0u16,
+            seconds                     : 1000u16,
             is_broadcast                : discover.is_broadcast,
 
             client_ip_address           : Ipv4Addr::new(0,0,0,0),
             your_ip_address             : offer.address,
-            server_ip_address           : self.server_ip_address,
+            server_ip_address           : Ipv4Addr::new(0,0,0,0),
             gateway_ip_address          : discover.gateway_ip_address,
 
             client_hardware_address     : discover.client_hardware_address,

@@ -30,7 +30,7 @@ pub struct Lease {
 
 #[allow(dead_code)]
 impl Lease {
-    /// Created a new `Lease` in `Offered` state.
+    /// Creates a new `Lease` in `Offered` state.
     pub fn new(address: Ipv4Addr, lease_time: u32) -> Self {
         let offered_at = Utc::now().timestamp() as u32;
 
@@ -51,34 +51,25 @@ impl Lease {
         self.address.to_owned()
     }
 
-    /// How long the address is leased for in milliseconds.
+    /// How long the address is leased for in seconds.
     pub fn lease_time(&self) -> u32 {
         self.lease_time
     }
 
-    /// Moves the lease from `Offered` to `Assigned` state.
+    /// Moves the lease from `Offered` to the `Assigned` state.
     ///
     /// Records the assignment time and calculates the expiration time.
     pub fn assign(&mut self, lease_time: u32) {
-        if !self.is_offered() {
-            return;
-        }
-
         self.state = State::Assigned;
         self.assigned_at = Utc::now().timestamp() as u32;
         self.lease_time = lease_time;
         self.expires_at = self.assigned_at + self.lease_time;
     }
 
-    /// Renewes the expiration time if the lease is in `Assigned` state.
+    /// Renewes the expiration time if the lease is in the `Assigned` state.
     ///
     /// Records the renewal time and calculates the expiration time.
     pub fn renew(&mut self, lease_time: u32) {
-        // possible only in Assigned state
-        if !self.is_assigned() {
-            return;
-        }
-
         self.lease_time = lease_time;
         self.renewed_at = Utc::now().timestamp() as u32;
         self.expires_at = self.renewed_at + self.lease_time;
@@ -86,11 +77,6 @@ impl Lease {
 
     /// Releases the address and moves the lease to `Released` state.
     pub fn release(&mut self) {
-        // may be released only once
-        if self.is_released() {
-            return;
-        }
-
         self.state = State::Released;
         self.released_at = Utc::now().timestamp() as u32;
     }
@@ -102,21 +88,25 @@ impl Lease {
 
     /// The number of seconds before the lease is expired in milliseconds.
     ///
-    /// Returns 0 if the lease has already expired or is not assigned yet.
+    /// Returns 0 if the lease has already expired.
     pub fn expires_after(&self) -> u32 {
-        let current = Utc::now().timestamp() as u32;
-        if current > self.expires_at {
+        if self.is_expired() {
             return 0;
         }
-        self.expires_at - current
+        self.expires_at - (Utc::now().timestamp() as u32)
     }
 
-    /// Check whether the address of the lease is still allocated (offered or assigned and not expired).
+    /// Check whether the address of the lease is active (assigned and not expired or released).
+    pub fn is_active(&self) -> bool {
+        self.is_assigned() && !self.is_expired()
+    }
+
+    /// Check whether the address of the lease is still allocated (offered or assigned and not expired or released).
     pub fn is_allocated(&self) -> bool {
-        (self.is_offered() && !self.is_offer_expired()) || (self.is_assigned() && !self.is_expired())
+        (self.is_offered() && !self.is_offer_expired()) || self.is_active()
     }
 
-    /// Check whether the address of the lease is available (the offer or assignment expired, or released).
+    /// Check whether the address of the lease is available (the offer or assignment expired or released).
     pub fn is_available(&self) -> bool {
         !self.is_allocated()
     }

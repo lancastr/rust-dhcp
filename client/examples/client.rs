@@ -73,7 +73,7 @@ fn main() {
         true,
     ).expect("Socket binding error").split();
 
-    let server_address = Some(Ipv4Addr::new(192,168,0,102));
+    let server_address = Some(Ipv4Addr::new(192,168,0,103));
     let client_address = None;
     let address_request = None;
     let address_time = Some(60);
