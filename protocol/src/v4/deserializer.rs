@@ -16,7 +16,7 @@ use super::{
     Message,
     options::{
         Options,
-        MessageType,
+        Overload,
         OptionTag::*,
     },
     constants::*,
@@ -54,7 +54,7 @@ impl Message {
     /// `io::Error` if the packet is abrupted, too small or contains invalid length octets.
     pub fn from_bytes(src: &[u8]) -> io::Result<Self> {
         let mut cursor = ::std::io::Cursor::new(src.as_ref());
-        check_remaining!(cursor, SIZE_HEADER_MINIMAL);
+        check_remaining!(cursor, OFFSET_OPTIONS);
 
         let mut message = Message{
             operation_code: cursor.get_u8().into(),
@@ -92,101 +92,116 @@ impl Message {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "MAGIC_COOKIE"));
         }
 
+        Self::append_options(&mut cursor, &mut message.options)?;
+        match message.options.overload {
+            Some(Overload::File) => {
+                let mut cursor = ::std::io::Cursor::new(&src[OFFSET_BOOT_FILENAME..SIZE_BOOT_FILENAME]);
+                Self::append_options(&mut cursor, &mut message.options)?;
+            },
+            Some(Overload::Sname) => {
+                let mut cursor = ::std::io::Cursor::new(&src[OFFSET_SERVER_NAME..SIZE_SERVER_NAME]);
+                Self::append_options(&mut cursor, &mut message.options)?;
+            },
+            Some(Overload::Both) => {
+                let mut cursor = ::std::io::Cursor::new(&src[OFFSET_BOOT_FILENAME..SIZE_BOOT_FILENAME]);
+                Self::append_options(&mut cursor, &mut message.options)?;
+                let mut cursor = ::std::io::Cursor::new(&src[OFFSET_SERVER_NAME..SIZE_SERVER_NAME]);
+                Self::append_options(&mut cursor, &mut message.options)?;
+            },
+            _ => {},
+        }
+
+        Ok(message)
+    }
+
+    fn append_options(mut cursor: &mut io::Cursor<&[u8]>, options: &mut Options) -> io::Result<()> {
         while cursor.remaining() > 0 {
             check_remaining!(cursor, mem::size_of::<u8>());
             let tag = cursor.get_u8();
             match tag.into() {
-                SubnetMask                  => message.options.subnet_mask = Some(Self::get_ipv4(&mut cursor)?),
-                TimeOffset                  => message.options.time_offset = Some(Self::get_u32(&mut cursor)?),
-                Routers                     => message.options.routers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                TimeServers                 => message.options.time_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                NameServers                 => message.options.name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                DomainNameServers           => message.options.domain_name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                LogServers                  => message.options.log_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                QuotesServers               => message.options.quotes_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                LprServers                  => message.options.lpr_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                ImpressServers              => message.options.impress_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                RlpServers                  => message.options.rlp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                Hostname                    => message.options.hostname = Some(Self::get_string(&mut cursor)?),
-                BootFileSize                => message.options.boot_file_size = Some(Self::get_u16(&mut cursor)?),
-                MeritDumpFile               => message.options.merit_dump_file = Some(Self::get_string(&mut cursor)?),
-                DomainName                  => message.options.domain_name = Some(Self::get_string(&mut cursor)?),
-                SwapServer                  => message.options.swap_server = Some(Self::get_ipv4(&mut cursor)?),
-                RootPath                    => message.options.root_path = Some(Self::get_string(&mut cursor)?),
-                ExtensionsPath              => message.options.extensions_path = Some(Self::get_string(&mut cursor)?),
-                ForwardOnOff                => message.options.forward_on_off = Some(Self::get_u8(&mut cursor)?),
-                NonLocalSourceRouteOnOff    => message.options.non_local_source_route_on_off = Some(Self::get_u8(&mut cursor)?),
-                PolicyFilters               => message.options.policy_filters = Some(Self::get_vec_ipv4_pairs(&mut cursor)?),
-                MaxDatagramReassemblySize   => message.options.max_datagram_reassembly_size = Some(Self::get_u16(&mut cursor)?),
-                DefaultIpTtl                => message.options.default_ip_ttl = Some(Self::get_u8(&mut cursor)?),
-                MtuTimeout                  => message.options.mtu_timeout = Some(Self::get_u32(&mut cursor)?),
-                MtuPlateau                  => message.options.mtu_plateau = Some(Self::get_vec_u16(&mut cursor)?),
-                MtuInterface                => message.options.mtu_interface = Some(Self::get_u16(&mut cursor)?),
-                MtuSubnet                   => message.options.mtu_subnet = Some(Self::get_u8(&mut cursor)?),
-                BroadcastAddress            => message.options.broadcast_address = Some(Self::get_ipv4(&mut cursor)?),
-                MaskRecovery                => message.options.mask_recovery = Some(Self::get_u8(&mut cursor)?),
-                MaskSupplier                => message.options.mask_supplier = Some(Self::get_u8(&mut cursor)?),
-                PerformRouterDiscovery      => message.options.perform_router_discovery = Some(Self::get_u8(&mut cursor)?),
-                RouterSolicitationAddress   => message.options.router_solicitation_address = Some(Self::get_ipv4(&mut cursor)?),
-                StaticRoutes                => message.options.static_routes = Some(Self::get_vec_ipv4_pairs(&mut cursor)?),
-                TrailerEncapsulation        => message.options.trailer_encapsulation = Some(Self::get_u8(&mut cursor)?),
-                ArpTimeout                  => message.options.arp_timeout = Some(Self::get_u32(&mut cursor)?),
-                EthernetEncapsulation       => message.options.ethernet_encapsulation = Some(Self::get_u8(&mut cursor)?),
-                DefaultTcpTtl               => message.options.default_tcp_ttl = Some(Self::get_u8(&mut cursor)?),
-                KeepaliveTime               => message.options.keepalive_time = Some(Self::get_u32(&mut cursor)?),
-                KeepaliveData               => message.options.keepalive_data = Some(Self::get_u8(&mut cursor)?),
-                NisDomain                   => message.options.nis_domain = Some(Self::get_string(&mut cursor)?),
-                NisServers                  => message.options.nis_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                NtpServers                  => message.options.ntp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                VendorSpecific              => message.options.vendor_specific = Some(Self::get_vec(&mut cursor)?),
-                NetbiosNameServers          => message.options.netbios_name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                NetbiosDistributionServers  => message.options.netbios_distribution_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                NetbiosNodeType             => message.options.netbios_node_type = Some(Self::get_u8(&mut cursor)?),
-                NetbiosScope                => message.options.netbios_scope = Some(Self::get_string(&mut cursor)?),
-                XWindowFontServers          => message.options.x_window_font_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                XWindowManagerServers       => message.options.x_window_manager_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                AddressRequest              => message.options.address_request = Some(Self::get_ipv4(&mut cursor)?),
-                AddressTime                 => message.options.address_time = Some(Self::get_u32(&mut cursor)?),
-                Overload                    => message.options.overload = Some(Self::get_u8(&mut cursor)?),
-                DhcpMessageType             => message.options.dhcp_message_type = Some(Self::get_message_type(&mut cursor)?),
-                DhcpServerId                => message.options.dhcp_server_id = Some(Self::get_ipv4(&mut cursor)?),
-                ParameterList               => message.options.parameter_list = Some(Self::get_vec(&mut cursor)?),
-                DhcpMessage                 => message.options.dhcp_message = Some(Self::get_string(&mut cursor)?),
-                DhcpMaxMessageSize          => message.options.dhcp_max_message_size = Some(Self::get_u16(&mut cursor)?),
-                RenewalTime                 => message.options.renewal_time = Some(Self::get_u32(&mut cursor)?),
-                RebindingTime               => message.options.rebinding_time = Some(Self::get_u32(&mut cursor)?),
-                ClassId                     => message.options.class_id = Some(Self::get_vec(&mut cursor)?),
-                ClientId                    => message.options.client_id = Some(Self::get_vec(&mut cursor)?),
-                NetwareIpDomain             => message.options.netware_ip_domain = Some(Self::get_vec(&mut cursor)?),
-                NetwareIpOption             => message.options.netware_ip_option = Some(Self::get_vec(&mut cursor)?),
-                NisDomainName               => message.options.nis_v3_domain_name = Some(Self::get_string(&mut cursor)?),
-                NisServerAddress            => message.options.nis_v3_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                ServerName                  => message.options.server_name = Some(Self::get_string(&mut cursor)?),
-                BootfileName                => message.options.bootfile_name = Some(Self::get_string(&mut cursor)?),
-                HomeAgentAddresses          => message.options.home_agent_addresses = Some(Self::get_vec_ipv4(&mut cursor)?),
-                SmtpServers                 => message.options.smtp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                Pop3Servers                 => message.options.pop3_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                NntpServers                 => message.options.nntp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                WwwServers                  => message.options.www_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                FingerServers               => message.options.finger_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                IrcServers                  => message.options.irc_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                StreetTalkServers           => message.options.street_talk_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
-                StdaServers                 => message.options.stda_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                SubnetMask                  => options.subnet_mask = Some(Self::get_ipv4(&mut cursor)?),
+                TimeOffset                  => options.time_offset = Some(Self::get_u32(&mut cursor)?),
+                Routers                     => options.routers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                TimeServers                 => options.time_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                NameServers                 => options.name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                DomainNameServers           => options.domain_name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                LogServers                  => options.log_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                QuotesServers               => options.quotes_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                LprServers                  => options.lpr_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                ImpressServers              => options.impress_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                RlpServers                  => options.rlp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                Hostname                    => options.hostname = Some(Self::get_string(&mut cursor)?),
+                BootFileSize                => options.boot_file_size = Some(Self::get_u16(&mut cursor)?),
+                MeritDumpFile               => options.merit_dump_file = Some(Self::get_string(&mut cursor)?),
+                DomainName                  => options.domain_name = Some(Self::get_string(&mut cursor)?),
+                SwapServer                  => options.swap_server = Some(Self::get_ipv4(&mut cursor)?),
+                RootPath                    => options.root_path = Some(Self::get_string(&mut cursor)?),
+                ExtensionsPath              => options.extensions_path = Some(Self::get_string(&mut cursor)?),
+                ForwardOnOff                => options.forward_on_off = Some(Self::get_u8(&mut cursor)?),
+                NonLocalSourceRouteOnOff    => options.non_local_source_route_on_off = Some(Self::get_u8(&mut cursor)?),
+                PolicyFilters               => options.policy_filters = Some(Self::get_vec_ipv4_pairs(&mut cursor)?),
+                MaxDatagramReassemblySize   => options.max_datagram_reassembly_size = Some(Self::get_u16(&mut cursor)?),
+                DefaultIpTtl                => options.default_ip_ttl = Some(Self::get_u8(&mut cursor)?),
+                MtuTimeout                  => options.mtu_timeout = Some(Self::get_u32(&mut cursor)?),
+                MtuPlateau                  => options.mtu_plateau = Some(Self::get_vec_u16(&mut cursor)?),
+                MtuInterface                => options.mtu_interface = Some(Self::get_u16(&mut cursor)?),
+                MtuSubnet                   => options.mtu_subnet = Some(Self::get_u8(&mut cursor)?),
+                BroadcastAddress            => options.broadcast_address = Some(Self::get_ipv4(&mut cursor)?),
+                MaskRecovery                => options.mask_recovery = Some(Self::get_u8(&mut cursor)?),
+                MaskSupplier                => options.mask_supplier = Some(Self::get_u8(&mut cursor)?),
+                PerformRouterDiscovery      => options.perform_router_discovery = Some(Self::get_u8(&mut cursor)?),
+                RouterSolicitationAddress   => options.router_solicitation_address = Some(Self::get_ipv4(&mut cursor)?),
+                StaticRoutes                => options.static_routes = Some(Self::get_vec_ipv4_pairs(&mut cursor)?),
+                TrailerEncapsulation        => options.trailer_encapsulation = Some(Self::get_u8(&mut cursor)?),
+                ArpTimeout                  => options.arp_timeout = Some(Self::get_u32(&mut cursor)?),
+                EthernetEncapsulation       => options.ethernet_encapsulation = Some(Self::get_u8(&mut cursor)?),
+                DefaultTcpTtl               => options.default_tcp_ttl = Some(Self::get_u8(&mut cursor)?),
+                KeepaliveTime               => options.keepalive_time = Some(Self::get_u32(&mut cursor)?),
+                KeepaliveData               => options.keepalive_data = Some(Self::get_u8(&mut cursor)?),
+                NisDomain                   => options.nis_domain = Some(Self::get_string(&mut cursor)?),
+                NisServers                  => options.nis_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                NtpServers                  => options.ntp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                VendorSpecific              => options.vendor_specific = Some(Self::get_vec(&mut cursor)?),
+                NetbiosNameServers          => options.netbios_name_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                NetbiosDistributionServers  => options.netbios_distribution_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                NetbiosNodeType             => options.netbios_node_type = Some(Self::get_u8(&mut cursor)?),
+                NetbiosScope                => options.netbios_scope = Some(Self::get_string(&mut cursor)?),
+                XWindowFontServers          => options.x_window_font_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                XWindowManagerServers       => options.x_window_manager_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                AddressRequest              => options.address_request = Some(Self::get_ipv4(&mut cursor)?),
+                AddressTime                 => options.address_time = Some(Self::get_u32(&mut cursor)?),
+                Overload                    => options.overload = Some(Self::get_u8(&mut cursor)?.into()),
+                DhcpMessageType             => options.dhcp_message_type = Some(Self::get_u8(&mut cursor)?.into()),
+                DhcpServerId                => options.dhcp_server_id = Some(Self::get_ipv4(&mut cursor)?),
+                ParameterList               => options.parameter_list = Some(Self::get_vec(&mut cursor)?),
+                DhcpMessage                 => options.dhcp_message = Some(Self::get_string(&mut cursor)?),
+                DhcpMaxMessageSize          => options.dhcp_max_message_size = Some(Self::get_u16(&mut cursor)?),
+                RenewalTime                 => options.renewal_time = Some(Self::get_u32(&mut cursor)?),
+                RebindingTime               => options.rebinding_time = Some(Self::get_u32(&mut cursor)?),
+                ClassId                     => options.class_id = Some(Self::get_vec(&mut cursor)?),
+                ClientId                    => options.client_id = Some(Self::get_vec(&mut cursor)?),
+                NetwareIpDomain             => options.netware_ip_domain = Some(Self::get_vec(&mut cursor)?),
+                NetwareIpOption             => options.netware_ip_option = Some(Self::get_vec(&mut cursor)?),
+                NisDomainName               => options.nis_v3_domain_name = Some(Self::get_string(&mut cursor)?),
+                NisServerAddress            => options.nis_v3_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                ServerName                  => options.server_name = Some(Self::get_string(&mut cursor)?),
+                BootfileName                => options.bootfile_name = Some(Self::get_string(&mut cursor)?),
+                HomeAgentAddresses          => options.home_agent_addresses = Some(Self::get_vec_ipv4(&mut cursor)?),
+                SmtpServers                 => options.smtp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                Pop3Servers                 => options.pop3_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                NntpServers                 => options.nntp_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                WwwServers                  => options.www_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                FingerServers               => options.finger_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                IrcServers                  => options.irc_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                StreetTalkServers           => options.street_talk_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
+                StdaServers                 => options.stda_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
 
                 End => break,
                 Pad => continue,
                 Unknown => Self::skip(&mut cursor)?,
             }
         }
-        Ok(message)
-    }
-
-    fn get_message_type(cursor: &mut io::Cursor<&[u8]>) -> io::Result<MessageType> {
-        check_remaining!(cursor, mem::size_of::<u8>());
-        let len = cursor.get_u8() as usize;
-        check_remaining!(cursor, len);
-        let value = cursor.get_u8();
-        Ok(value.into())
+        Ok(())
     }
 
     fn get_u8(cursor: &mut io::Cursor<&[u8]>) -> io::Result<u8> {

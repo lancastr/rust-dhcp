@@ -13,6 +13,7 @@ use tokio::{
     prelude::*,
 };
 use futures::StartSend;
+use eui48::MacAddress;
 use hostname;
 
 use protocol::{
@@ -21,10 +22,7 @@ use protocol::{
     DHCP_PORT_SERVER,
 };
 
-use builder::{
-    MessageBuilder,
-    ClientId,
-};
+use builder::MessageBuilder;
 use state::{
     State,
     DhcpState,
@@ -79,9 +77,18 @@ pub struct Client {
 impl Client {
     /// Creates a client future.
     ///
+    /// * `stream`
+    /// The external socket `Stream` part.
+    ///
+    /// * `sink`
+    /// The external socket `Sink` part.
+    ///
+    /// * `client_hardware_address`
+    /// The mandatory client MAC address.
+    ///
     /// * `client_id`
-    /// The client identifier.
-    /// May be either a MAC-48 or a custom byte array.
+    /// The optional client identifier.
+    /// If `None`, is defaulted to the 6-byte MAC address.
     ///
     /// * `hostname`
     /// May be explicitly set by a client user.
@@ -114,7 +121,8 @@ impl Client {
     pub fn new(
         stream                  : Box<DhcpStream>,
         sink                    : Box<DhcpSink>,
-        client_id               : ClientId,
+        client_hardware_address : MacAddress,
+        client_id               : Option<Vec<u8>>,
         hostname                : Option<String>,
         server_address          : Option<Ipv4Addr>,
         client_address          : Option<Ipv4Addr>,
@@ -158,7 +166,10 @@ impl Client {
         };
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
 
+        let client_id = client_id.unwrap_or(client_hardware_address.as_bytes().to_vec());
+
         let message_builder = MessageBuilder::new(
+            client_hardware_address,
             client_id,
             hostname,
         );

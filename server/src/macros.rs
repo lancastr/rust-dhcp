@@ -11,15 +11,30 @@ macro_rules! start_send (
 );
 
 /// Chooses the destination IP according to RFC 2131 rules.
-macro_rules! choose_destination (
+macro_rules! destination (
     ($request:expr, $response:expr) => (
         if !$request.client_ip_address.is_unspecified() {
-            ($request.client_ip_address, false)
+            $request.client_ip_address
         } else {
             if $request.is_broadcast {
-                (Ipv4Addr::new(255,255,255,255), false)
+                Ipv4Addr::new(255,255,255,255)
             } else {
-                ($response.your_ip_address, true)
+                let _ = arp::add(
+                    $request.client_hardware_address,
+                    $response.your_ip_address,
+                    "".to_string(),
+                ).map_err(|error| error!("ARP error: {:?}", error));
+                $response.your_ip_address
+
+                /*
+                RFC 2131 §4.1
+                If unicasting is not possible, the message
+                MAY be sent as an IP broadcast using an IP broadcast address
+                (preferably 0xffffffff) as the IP destination address and the link-
+                layer broadcast address as the link-layer destination address.
+
+                Note: I don't know when unicasting is not possible yet.
+                */
             }
         }
     );

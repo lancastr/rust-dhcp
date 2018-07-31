@@ -20,6 +20,7 @@ use protocol::{
     DHCP_PORT_SERVER,
     DHCP_PORT_CLIENT,
 };
+use arp;
 
 use builder::MessageBuilder;
 use database::{
@@ -153,7 +154,7 @@ impl Future for Server {
                     ) {
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
-                            let (destination, _arp) = choose_destination!(request, response);
+                            let destination = destination!(request, response);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
                         },
@@ -194,7 +195,7 @@ impl Future for Server {
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let (destination, _arp) = choose_destination!(request, response);
+                                let destination = destination!(request, response);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
                             },
@@ -216,7 +217,7 @@ impl Future for Server {
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let (destination, _arp) = choose_destination!(request, response);
+                                let destination = destination!(request, response);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
                             },
@@ -243,7 +244,7 @@ impl Future for Server {
                     match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                            let (destination, _arp) = choose_destination!(request, response);
+                            let destination = destination!(request, response);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
                         },
@@ -292,7 +293,7 @@ impl Future for Server {
 
                     info!("Address {} has been taken by some client manually", request.client_ip_address);
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
-                    let (destination, _arp) = choose_destination!(request, response);
+                    let destination = destination!(request, response);
                     log_send!(response, destination);
                     start_send!(self.socket, destination, response);
                 },

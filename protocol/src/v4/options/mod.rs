@@ -1,10 +1,14 @@
 //! DHCP options module.
 
 mod option_tag;
+mod overload;
 mod message_type;
 
-pub use self::option_tag::OptionTag;
-pub use self::message_type::MessageType;
+pub use self::{
+    option_tag::OptionTag,
+    overload::Overload,
+    message_type::MessageType,
+};
 
 use std::net::Ipv4Addr;
 
@@ -75,7 +79,7 @@ pub struct Options {
     // DHCP Extensions (RFC 2132 §9)
     pub address_request                 : Option<Ipv4Addr>,
     pub address_time                    : Option<u32>,
-    pub overload                        : Option<u8>,
+    pub overload                        : Option<Overload>,
     pub dhcp_message_type               : Option<MessageType>,
     pub dhcp_server_id                  : Option<Ipv4Addr>,
     pub parameter_list                  : Option<Vec<u8>>,

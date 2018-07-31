@@ -13,10 +13,7 @@ use bytes::{
 
 use super::{
     Message,
-    options::{
-        MessageType,
-        OptionTag,
-    },
+    options::OptionTag,
     constants::*,
 };
 
@@ -38,7 +35,7 @@ impl Message {
         use OptionTag::*;
 
         let mut cursor = io::Cursor::new(dst);
-        check_remaining!(cursor, SIZE_HEADER_MINIMAL);
+        check_remaining!(cursor, OFFSET_OPTIONS);
         cursor.put_u8(self.operation_code as u8);
         cursor.put_u8(self.hardware_type as u8);
         cursor.put_u8(self.hardware_address_length);
@@ -109,8 +106,8 @@ impl Message {
         Self::put_vec_ipv4(&mut cursor, XWindowManagerServers, &self.options.x_window_manager_servers)?;
         Self::put_ipv4(&mut cursor, AddressRequest, &self.options.address_request)?;
         Self::put_u32(&mut cursor, AddressTime, &self.options.address_time)?;
-        Self::put_u8(&mut cursor, Overload, &self.options.overload)?;
-        Self::put_message_type(&mut cursor, DhcpMessageType, &self.options.dhcp_message_type)?;
+        Self::put_u8(&mut cursor, Overload, &self.options.overload.as_ref().map(|v| v.clone() as u8))?;
+        Self::put_u8(&mut cursor, DhcpMessageType, &self.options.dhcp_message_type.as_ref().map(|v| v.clone() as u8))?;
         Self::put_ipv4(&mut cursor, DhcpServerId, &self.options.dhcp_server_id)?;
         Self::put_vec(&mut cursor, ParameterList, &self.options.parameter_list)?;
         Self::put_string(&mut cursor, DhcpMessage, &self.options.dhcp_message)?;
@@ -138,21 +135,6 @@ impl Message {
         check_remaining!(cursor, mem::size_of::<u8>());
         cursor.put_u8(End as u8);
         Ok(cursor.position() as usize)
-    }
-
-    fn put_message_type(
-        cursor      : &mut io::Cursor<&mut [u8]>,
-        tag         : OptionTag,
-        value       : &Option<MessageType>,
-    ) -> io::Result<()> {
-        if let Some(ref value) = value {
-            let size = mem::size_of::<u8>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
-            cursor.put_u8(tag as u8);
-            cursor.put_u8(size as u8);
-            cursor.put_u8(*value as u8);
-        }
-        Ok(())
     }
 
     fn put_u8(
@@ -237,6 +219,9 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = value.len();
+            if size == 0 {
+                return Ok(());
+            }
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
@@ -252,6 +237,9 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = value.len() * mem::size_of::<u16>();
+            if size == 0 {
+                return Ok(());
+            }
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
@@ -269,6 +257,9 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = value.len() * mem::size_of::<u32>();
+            if size == 0 {
+                return Ok(());
+            }
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
@@ -286,6 +277,9 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = value.len() * mem::size_of::<u32>() * 2;
+            if size == 0 {
+                return Ok(());
+            }
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);

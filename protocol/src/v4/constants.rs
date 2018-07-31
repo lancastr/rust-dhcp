@@ -1,19 +1,25 @@
 //! DHCP message constants.
 
-/// From the beginning to `MAGIC_COOKIE` inclusively.
-pub const SIZE_HEADER_MINIMAL: usize = 240;
-
 /// `flags` size in bytes.
 pub const SIZE_FLAGS: usize = 2;
 
 /// `client_hardware_address` size in bytes.
 pub const SIZE_HARDWARE_ADDRESS: usize = 16;
 
+/// The `server_name` field offset.
+pub const OFFSET_SERVER_NAME: usize = 48;
+
 /// `server_name` size in bytes.
 pub const SIZE_SERVER_NAME: usize = 64;
 
+/// The `boot_filename` field offset.
+pub const OFFSET_BOOT_FILENAME: usize = OFFSET_SERVER_NAME + SIZE_SERVER_NAME;
+
 /// `boot_filename` size in bytes.
 pub const SIZE_BOOT_FILENAME: usize = 128;
+
+/// DHCP options offset.
+pub const OFFSET_OPTIONS: usize = OFFSET_SERVER_NAME + SIZE_SERVER_NAME + SIZE_BOOT_FILENAME;
 
 /// 1 byte tag and 1 byte length before each DHCP option.
 pub const SIZE_OPTION_PREFIX: usize = 2;

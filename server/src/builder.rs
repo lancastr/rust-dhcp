@@ -59,14 +59,14 @@ impl MessageBuilder {
         offer                           : &Offer,
     ) -> Message {
         let mut options = Options::default();
-        options.address_time            = Some(offer.lease_time);
-        options.dhcp_message_type       = Some(MessageType::DhcpOffer);
-        options.dhcp_server_id          = Some(self.server_ip_address);
-        options.dhcp_message            = Some(offer.message.to_owned());
-
+        self.append_default_options(&mut options);
         if let Some(ref parameter_list) = discover.options.parameter_list {
-            self.add_requested_parameters(&mut options, parameter_list);
+            self.append_requested_options(&mut options, parameter_list);
         }
+
+        options.dhcp_message_type       = Some(MessageType::DhcpOffer);
+        options.dhcp_message            = Some(offer.message.to_owned());
+        options.address_time            = Some(offer.lease_time);
 
         Message {
             operation_code              : OperationCode::BootReply,
@@ -75,7 +75,7 @@ impl MessageBuilder {
             hardware_options            : 0u8,
 
             transaction_id              : discover.transaction_id,
-            seconds                     : 1000u16,
+            seconds                     : 0u16,
             is_broadcast                : discover.is_broadcast,
 
             client_ip_address           : Ipv4Addr::new(0,0,0,0),
@@ -98,16 +98,16 @@ impl MessageBuilder {
         ack                             : &Ack,
     ) -> Message {
         let mut options = Options::default();
-        options.address_time            = Some(ack.lease_time);
+        self.append_default_options(&mut options);
+        if let Some(ref parameter_list) = request.options.parameter_list {
+            self.append_requested_options(&mut options, parameter_list);
+        }
+
         options.dhcp_message_type       = Some(MessageType::DhcpAck);
-        options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(ack.message.to_owned());
+        options.address_time            = Some(ack.lease_time);
         options.renewal_time            = Some(ack.renewal_time);
         options.rebinding_time          = Some(ack.rebinding_time);
-
-        if let Some(ref parameter_list) = request.options.parameter_list {
-            self.add_requested_parameters(&mut options, parameter_list);
-        }
 
         Message {
             operation_code              : OperationCode::BootReply,
@@ -139,12 +139,12 @@ impl MessageBuilder {
         message                         : &str,
     ) -> Message {
         let mut options = Options::default();
-        options.subnet_mask             = Some(self.subnet_mask);
-        options.routers                 = Some(self.routers.to_owned());
-        options.domain_name_servers     = Some(self.domain_name_servers.to_owned());
-        options.static_routes           = Some(self.static_routes.to_owned());
+        self.append_default_options(&mut options);
+        if let Some(ref parameter_list) = inform.options.parameter_list {
+            self.append_requested_options(&mut options, parameter_list);
+        }
+
         options.dhcp_message_type       = Some(MessageType::DhcpAck);
-        options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(message.to_owned());
 
         Message {
@@ -177,8 +177,9 @@ impl MessageBuilder {
         error                           : &Error,
     ) -> Message {
         let mut options = Options::default();
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpNak);
-        options.dhcp_server_id          = Some(self.server_ip_address);
         options.dhcp_message            = Some(error.to_string());
 
         Message {
@@ -204,13 +205,23 @@ impl MessageBuilder {
         }
     }
 
-    fn add_requested_parameters(&self, options: &mut Options, parameter_list: &[u8]) {
+    fn append_default_options(&self, options: &mut Options) {
+        options.dhcp_server_id = Some(self.server_ip_address);
+    }
+
+    fn append_requested_options(&self, options: &mut Options, parameter_list: &[u8]) {
         for tag in parameter_list {
             match (*tag).into() {
                 OptionTag::SubnetMask => options.subnet_mask = Some(self.subnet_mask),
-                OptionTag::Routers => options.routers = Some(self.routers.to_owned()),
-                OptionTag::DomainNameServers => options.domain_name_servers = Some(self.domain_name_servers.to_owned()),
-                OptionTag::StaticRoutes => options.static_routes = Some(self.static_routes.to_owned()),
+                OptionTag::Routers => if self.routers.len() > 0 {
+                    options.routers = Some(self.routers.to_owned());
+                },
+                OptionTag::DomainNameServers => if self.domain_name_servers.len() > 0 {
+                    options.domain_name_servers = Some(self.domain_name_servers.to_owned());
+                },
+                OptionTag::StaticRoutes => if self.static_routes.len() > 0 {
+                    options.static_routes = Some(self.static_routes.to_owned())
+                },
                 _ => continue,
             }
         }

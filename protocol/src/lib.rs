@@ -15,6 +15,7 @@ pub use self::{
             Options,
             OptionTag,
             MessageType,
+            Overload,
         },
         constants::*,
     },

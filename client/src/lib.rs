@@ -25,5 +25,4 @@ pub use self::{
         Configuration,
         Command,
     },
-    builder::ClientId,
 };

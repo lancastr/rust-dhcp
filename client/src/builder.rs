@@ -23,27 +23,13 @@ pub struct MessageBuilder {
     hostname                    : Option<String>,
 }
 
-pub enum ClientId {
-    Mac(MacAddress),
-    Custom(Vec<u8>),
-}
-
 impl MessageBuilder {
     /// Creates a builder with message parameters which will not be changed.
     pub fn new(
-        client_id               : ClientId,
+        client_hardware_address : MacAddress,
+        client_id               : Vec<u8>,
         hostname                : Option<String>,
     ) -> Self {
-        let client_hardware_address = match client_id {
-            ClientId::Mac(mac) => mac,
-            _ => MacAddress::new([0u8; EUI48LEN]),
-        };
-
-        let client_id = match client_id {
-            ClientId::Custom(id) => id,
-            _ => client_hardware_address.as_bytes().to_vec(),
-        };
-
         MessageBuilder {
             client_hardware_address,
             client_id,
@@ -60,12 +46,12 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
-        options.address_request         = address_request;
-        options.address_time            = address_time;
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpDiscover);
         options.parameter_list          = Some(Self::parameter_list());
-        options.client_id               = Some(self.client_id.to_owned());
+        options.address_request         = address_request;
+        options.address_time            = address_time;
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -100,13 +86,13 @@ impl MessageBuilder {
         dhcp_server_id                  : Ipv4Addr,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
-        options.address_request         = Some(address_request);
-        options.address_time            = address_time;
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
         options.dhcp_server_id          = Some(dhcp_server_id);
         options.parameter_list          = Some(Self::parameter_list());
-        options.client_id               = Some(self.client_id.to_owned());
+        options.address_request         = Some(address_request);
+        options.address_time            = address_time;
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -140,12 +126,12 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
-        options.address_request         = Some(address_request);
-        options.address_time            = address_time;
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
         options.parameter_list          = Some(Self::parameter_list());
-        options.client_id               = Some(self.client_id.to_owned());
+        options.address_request         = Some(address_request);
+        options.address_time            = address_time;
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -179,11 +165,11 @@ impl MessageBuilder {
         address_time                    : Option<u32>,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
-        options.address_time            = address_time;
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpRequest);
         options.parameter_list          = Some(Self::parameter_list());
-        options.client_id               = Some(self.client_id.to_owned());
+        options.address_time            = address_time;
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -216,10 +202,10 @@ impl MessageBuilder {
         client_ip_address               : Ipv4Addr,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpInform);
         options.parameter_list          = Some(Self::parameter_list());
-        options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -253,11 +239,11 @@ impl MessageBuilder {
         dhcp_message                    : Option<String>,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpRelease);
         options.dhcp_server_id          = Some(dhcp_server_id);
         options.dhcp_message            = dhcp_message;
-        options.client_id               = Some(self.client_id.to_owned());
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -291,12 +277,12 @@ impl MessageBuilder {
         dhcp_message                    : Option<String>,
     ) -> Message {
         let mut options = Options::default();
-        options.hostname                = self.hostname.to_owned();
-        options.address_request         = Some(requested_address);
+        self.append_default_options(&mut options);
+
         options.dhcp_message_type       = Some(MessageType::DhcpDecline);
         options.dhcp_server_id          = Some(dhcp_server_id);
         options.dhcp_message            = dhcp_message;
-        options.client_id               = Some(self.client_id.to_owned());
+        options.address_request         = Some(requested_address);
 
         Message {
             operation_code              : OperationCode::BootRequest,
@@ -319,6 +305,11 @@ impl MessageBuilder {
 
             options,
         }
+    }
+
+    fn append_default_options(&self, options: &mut Options) {
+        options.hostname = self.hostname.to_owned();
+        options.client_id = Some(self.client_id.to_owned());
     }
 
     fn parameter_list() -> Vec<u8> {

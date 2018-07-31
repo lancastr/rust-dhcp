@@ -19,6 +19,7 @@ extern crate chrono;
 
 extern crate protocol;
 extern crate framed;
+extern crate arp;
 
 pub use self::{
     server::Server,

@@ -49,7 +49,13 @@ macro_rules! write_opt(
         if let Some(ref v) = $option {
             writeln!($f, "[{:03}] {:027}| {:?}", code, $name, v)?;
         }
-    )
+    );
+    ($f:expr, $option:expr, $name:expr, $code_iter:expr, $display:expr) => (
+        let code = $code_iter.next().unwrap_or(0);
+        if let Some(ref v) = $option {
+            writeln!($f, "[{:03}] {:027}| {}", code, $name, v)?;
+        }
+    );
 );
 
 impl fmt::Display for Message {
@@ -123,8 +129,8 @@ impl fmt::Display for Message {
         write_opt!(f, self.options.x_window_manager_servers, "x_window_manager_servers", code_iter);
         write_opt!(f, self.options.address_request, "address_request", code_iter);
         write_opt!(f, self.options.address_time, "address_time", code_iter);
-        write_opt!(f, self.options.overload, "overload", code_iter);
-        write_opt!(f, self.options.dhcp_message_type, "dhcp_message_type", code_iter);
+        write_opt!(f, self.options.overload, "overload", code_iter, true);
+        write_opt!(f, self.options.dhcp_message_type, "dhcp_message_type", code_iter, true);
         write_opt!(f, self.options.dhcp_server_id, "dhcp_server_id", code_iter);
         write_opt!(f, self.options.parameter_list, "parameter_list", code_iter);
         write_opt!(f, self.options.dhcp_message, "dhcp_message", code_iter);

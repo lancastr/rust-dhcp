@@ -1,0 +1,9 @@
+[package]
+name = "arp"
+version = "0.1.0"
+authors = ["hedgar"]
+
+[dependencies]
+libc = { git = "https://github.com/rust-lang/libc.git" }
+nix = { git = "https://github.com/nix-rust/nix.git" }
+eui48 = "0.3.2"

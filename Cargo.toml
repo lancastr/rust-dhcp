@@ -2,6 +2,7 @@
 members = [
     "server",
     "client",
-    "framed",
     "protocol",
+    "framed",
+    "arp",
 ]

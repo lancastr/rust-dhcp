@@ -26,7 +26,6 @@ use tokio::prelude::*;
 
 use client::{
     Client,
-    ClientId,
     Command,
 };
 use framed::DhcpFramed;
@@ -73,7 +72,7 @@ fn main() {
         true,
     ).expect("Socket binding error").split();
 
-    let server_address = Some(Ipv4Addr::new(192,168,0,103));
+    let server_address = Some(Ipv4Addr::new(192,168,0,4));
     let client_address = None;
     let address_request = None;
     let address_time = Some(60);
@@ -81,7 +80,8 @@ fn main() {
     let client = SuperClient(Client::new(
         Box::new(stream),
         Box::new(sink),
-        ClientId::Mac(MacAddress::new([0x00,0x0c,0x29,0x56,0xab,0xcc])),
+        MacAddress::new([0x00,0x0c,0x29,0x56,0xab,0xcc]),
+        None,
         None,
         server_address,
         client_address,
