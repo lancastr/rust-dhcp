@@ -17,13 +17,18 @@ macro_rules! destination (
             $request.client_ip_address
         } else {
             if $request.is_broadcast {
-                Ipv4Addr::new(255,255,255,255)
+                Ipv4Addr::new(255, 255, 255, 255)
             } else {
+                info!(
+                    "Injecting an ARP entry {} -> {}",
+                    $request.client_hardware_address,
+                    $response.your_ip_address,
+                );
                 let _ = arp::add(
                     $request.client_hardware_address,
                     $response.your_ip_address,
                     "".to_string(),
-                ).map_err(|error| error!("ARP error: {:?}", error));
+                ).map_err(|error| warn!("ARP error: {:?}", error));
                 $response.your_ip_address
 
                 /*

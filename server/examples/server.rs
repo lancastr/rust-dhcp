@@ -19,13 +19,12 @@ fn main() {
     std::env::set_var("RUST_LOG", "server=trace");
     env_logger::init();
 
-    let server_ip_address = Ipv4Addr::new(192,168,0,4);
+    let server_ip_address = Ipv4Addr::new(192,168,0,2);
 
     let server = server::Server::new(
         server_ip_address,
-        Some("The test server".to_owned()),
 
-        (Ipv4Addr::new(192,168,0,2), Ipv4Addr::new(192,168,0,99)),
+        (Ipv4Addr::new(192,168,0,50), Ipv4Addr::new(192,168,0,99)),
         (Ipv4Addr::new(192,168,0,100), Ipv4Addr::new(192,168,0,199)),
         Box::new(server::RamStorage::new()),
 

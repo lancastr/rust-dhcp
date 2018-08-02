@@ -1,24 +1,34 @@
-mod linux;
+#[cfg(target_os = "linux")]
+#[path = "linux.rs"]
+mod os;
+#[cfg(target_os = "windows")]
+#[path = "windows.rs"]
+mod os;
 
+#[cfg(target_os = "linux")]
 extern crate libc;
+#[cfg(target_os = "linux")]
 #[macro_use] extern crate nix;
+
+#[cfg(target_os = "windows")]
+extern crate winapi;
+
 extern crate eui48;
 
 use std::net::Ipv4Addr;
 use eui48::MacAddress;
 
+/// The OS-polymorphic OS-error.
 #[derive(Debug)]
-pub enum Error {
-    Linux(linux::Error),
-}
+pub struct Error(os::Error);
 
-impl From<linux::Error> for Error {
-    fn from(error: linux::Error) -> Self {
-        Error::Linux(error)
+impl From<os::Error> for Error {
+    fn from(error: os::Error) -> Self {
+        Error(error)
     }
 }
 
 /// The facade function choosing the OS implementation.
 pub fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(), Error> {
-    Ok(linux::add(hwaddr, ip, iface)?)
+    Ok(os::add(hwaddr, ip, iface)?)
 }

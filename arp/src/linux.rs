@@ -1,6 +1,9 @@
+
+
 use std::{
     ptr,
     mem,
+    cmp,
     net::{
         SocketAddr,
         IpAddr,
@@ -12,6 +15,7 @@ use libc::{
     self,
     arpreq,
     c_char,
+    c_ushort,
     c_int,
 };
 use nix::{
@@ -38,9 +42,11 @@ pub enum Error {
     Syscall(nix::Error),
 }
 
-const AF_INET: u16 = 0x02;
-const ARPHRD_ETHER: u16 = 0x01;
+const ARPHRD_ETHER: c_ushort = 0x01;
+const AF_INET: c_ushort = 0x02;
 const ATF_COM: c_int = 0x02;
+
+const MAX_IFACE_LEN: usize = 15;
 
 pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(), Error> {
     let mut req: arpreq = unsafe { mem::zeroed() };
@@ -63,7 +69,7 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(),
 
     req.arp_netmask.sa_family = AF_INET;
 
-    let iface_len = iface.len();
+    let iface_len = cmp::min(iface.len(), MAX_IFACE_LEN);
     unsafe {
         ptr::copy_nonoverlapping(
             iface.as_ptr() as *const c_char,

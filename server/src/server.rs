@@ -43,11 +43,6 @@ impl Server {
     /// The address clients will receive in the `server_ip_address` field.
     /// Is usually set to needed network interface address.
     ///
-    /// * `server_name`
-    /// May be explicitly set by a server user.
-    /// Otherwise it is defaulted to the machine hostname.
-    /// If the hostname cannot be get, remains empty.
-    ///
     /// * `static_address_range`
     /// An inclusive IPv4 address range. Gaps may be implemented later.
     ///
@@ -71,7 +66,6 @@ impl Server {
     ///
     pub fn new(
         server_ip_address       : Ipv4Addr,
-        server_name             : Option<String>,
         static_address_range    : (Ipv4Addr, Ipv4Addr),
         dynamic_address_range   : (Ipv4Addr, Ipv4Addr),
         storage                 : Box<Storage>,
@@ -83,10 +77,11 @@ impl Server {
     ) -> Result<Self, io::Error> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
+        let hostname = hostname::get_hostname();
 
         let message_builder = MessageBuilder::new(
             server_ip_address,
-            server_name.unwrap_or(hostname::get_hostname().unwrap_or_default()),
+            hostname,
 
             subnet_mask,
             routers,

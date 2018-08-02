@@ -36,6 +36,7 @@ pub struct DhcpFramed {
 
 impl DhcpFramed {
     /// Binds to `addr` and returns a `Stream+Sink` UDP socket abstraction.
+    #[allow(unused_variables)]
     pub fn new(addr: SocketAddr, reuse_addr: bool, reuse_port: bool) -> io::Result<Self> {
         let socket = UdpBuilder::new_v4()?;
         if reuse_addr {

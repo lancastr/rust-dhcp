@@ -18,8 +18,8 @@ use database::{
 pub struct MessageBuilder {
     /// Sent to clients in `server_ip_address` field.
     server_ip_address       : Ipv4Addr,
-    /// Sent to clients in `server_name` field.
-    server_name             : String,
+    /// Sent to clients in `hostname` option.
+    hostname                : Option<String>,
     /// Sent to clients in options.
     subnet_mask             : Ipv4Addr,
     /// Sent to clients in options.
@@ -34,7 +34,7 @@ impl MessageBuilder {
     /// Creates a builder with message parameters which will not be changed.
     pub fn new(
         server_ip_address       : Ipv4Addr,
-        server_name             : String,
+        hostname                : Option<String>,
 
         subnet_mask             : Ipv4Addr,
         routers                 : Vec<Ipv4Addr>,
@@ -43,7 +43,7 @@ impl MessageBuilder {
     ) -> Self {
         MessageBuilder {
             server_ip_address,
-            server_name,
+            hostname,
 
             subnet_mask,
             routers,
@@ -84,7 +84,7 @@ impl MessageBuilder {
             gateway_ip_address          : discover.gateway_ip_address,
 
             client_hardware_address     : discover.client_hardware_address,
-            server_name                 : self.server_name.to_owned(),
+            server_name                 : String::new(),
             boot_filename               : String::new(),
 
             options,
@@ -125,7 +125,7 @@ impl MessageBuilder {
             gateway_ip_address          : request.gateway_ip_address,
 
             client_hardware_address     : request.client_hardware_address,
-            server_name                 : self.server_name.to_owned(),
+            server_name                 : String::new(),
             boot_filename               : String::new(),
 
             options,
@@ -163,7 +163,7 @@ impl MessageBuilder {
             gateway_ip_address          : inform.gateway_ip_address,
 
             client_hardware_address     : inform.client_hardware_address,
-            server_name                 : self.server_name.to_owned(),
+            server_name                 : String::new(),
             boot_filename               : String::new(),
 
             options,
@@ -206,6 +206,7 @@ impl MessageBuilder {
     }
 
     fn append_default_options(&self, options: &mut Options) {
+        options.hostname = self.hostname.to_owned();
         options.dhcp_server_id = Some(self.server_ip_address);
     }
 
