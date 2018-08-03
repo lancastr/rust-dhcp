@@ -10,9 +10,6 @@ extern crate libc;
 #[cfg(target_os = "linux")]
 #[macro_use] extern crate nix;
 
-#[cfg(target_os = "windows")]
-extern crate winapi;
-
 extern crate eui48;
 
 use std::net::Ipv4Addr;

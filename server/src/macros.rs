@@ -12,7 +12,7 @@ macro_rules! start_send (
 
 /// Chooses the destination IP according to RFC 2131 rules.
 macro_rules! destination (
-    ($request:expr, $response:expr) => (
+    ($request:expr, $response:expr, $iface:expr) => (
         if !$request.client_ip_address.is_unspecified() {
             $request.client_ip_address
         } else {
@@ -27,7 +27,7 @@ macro_rules! destination (
                 let _ = arp::add(
                     $request.client_hardware_address,
                     $response.your_ip_address,
-                    "".to_string(),
+                    $iface.to_owned(),
                 ).map_err(|error| warn!("ARP error: {:?}", error));
                 $response.your_ip_address
 

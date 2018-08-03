@@ -32,6 +32,8 @@ use storage::Storage;
 /// The struct implementing the `Future` trait.
 pub struct Server {
     socket                  : DhcpFramed,
+    server_ip_address       : Ipv4Addr,
+    iface_name              : String,
     builder                 : MessageBuilder,
     database                : Database,
 }
@@ -40,8 +42,12 @@ impl Server {
     /// Creates a server future
     ///
     /// * `server_ip_address`
-    /// The address clients will receive in the `server_ip_address` field.
+    /// The address clients will receive in the `dhcp_server_id` option.
     /// Is usually set to needed network interface address.
+    ///
+    /// * `iface_name`
+    /// The interface the server should work on. Is required for ARP injection.
+    /// Something like `ens33` on Linux or like `Ethernet` on Windows.
     ///
     /// * `static_address_range`
     /// An inclusive IPv4 address range. Gaps may be implemented later.
@@ -66,6 +72,7 @@ impl Server {
     ///
     pub fn new(
         server_ip_address       : Ipv4Addr,
+        iface_name              : String,
         static_address_range    : (Ipv4Addr, Ipv4Addr),
         dynamic_address_range   : (Ipv4Addr, Ipv4Addr),
         storage                 : Box<Storage>,
@@ -97,6 +104,8 @@ impl Server {
 
         Ok(Server {
             socket,
+            server_ip_address,
+            iface_name,
             builder: message_builder,
             database: storage,
         })
@@ -114,6 +123,13 @@ impl Future for Server {
             let (addr, request) = poll!(self.socket);
             let dhcp_message_type = validate!(request, addr);
             log_receive!(request, addr);
+
+            if let Some(dhcp_server_id) = request.options.dhcp_server_id {
+                if dhcp_server_id != self.server_ip_address {
+                    warn!("Ignoring a message destined for server {}", dhcp_server_id);
+                    continue;
+                }
+            }
 
             /*
             RFC 2131 §4.1
@@ -149,7 +165,7 @@ impl Future for Server {
                     ) {
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
-                            let destination = destination!(request, response);
+                            let destination = destination!(request, response, self.iface_name);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
                         },
@@ -190,7 +206,7 @@ impl Future for Server {
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let destination = destination!(request, response);
+                                let destination = destination!(request, response, self.iface_name);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
                             },
@@ -212,7 +228,7 @@ impl Future for Server {
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let destination = destination!(request, response);
+                                let destination = destination!(request, response, self.iface_name);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
                             },
@@ -239,7 +255,7 @@ impl Future for Server {
                     match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                            let destination = destination!(request, response);
+                            let destination = destination!(request, response, self.iface_name);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
                         },
@@ -288,7 +304,7 @@ impl Future for Server {
 
                     info!("Address {} has been taken by some client manually", request.client_ip_address);
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
-                    let destination = destination!(request, response);
+                    let destination = destination!(request, response, self.iface_name);
                     log_send!(response, destination);
                     start_send!(self.socket, destination, response);
                 },
