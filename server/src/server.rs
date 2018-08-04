@@ -12,15 +12,20 @@ use tokio::{
     io,
     prelude::*,
 };
+use tokio_process::OutputAsync;
 use hostname;
 
 use framed::DhcpFramed;
 use protocol::{
+    Message,
     MessageType,
     DHCP_PORT_SERVER,
     DHCP_PORT_CLIENT,
 };
-use arp;
+use arp::{
+    self,
+    Arp,
+};
 
 use builder::MessageBuilder;
 use database::{
@@ -36,6 +41,7 @@ pub struct Server {
     iface_name              : String,
     builder                 : MessageBuilder,
     database                : Database,
+    arp                     : Option<OutputAsync>,
 }
 
 impl Server {
@@ -108,7 +114,49 @@ impl Server {
             iface_name,
             builder: message_builder,
             database: storage,
+            arp: None,
         })
+    }
+
+    /// Chooses the destination IP according to RFC 2131 rules.
+    ///
+    /// Performs the ARP query in hardware unicast cases and sets the `arp_future` field
+    /// if ARP processing is expected to be too long for the tokio reactor.
+    fn destination(&mut self, request: &Message, response: &Message) -> Ipv4Addr {
+        if !request.client_ip_address.is_unspecified() {
+            return request.client_ip_address;
+        }
+
+        if request.is_broadcast {
+            return Ipv4Addr::new(255, 255, 255, 255);
+        }
+
+        info!(
+            "Injecting an ARP entry {} -> {}",
+            request.client_hardware_address,
+            response.your_ip_address,
+        );
+        match arp::add(
+            request.client_hardware_address,
+            response.your_ip_address,
+            self.iface_name.to_owned(),
+        ) {
+            Ok(Arp::Linux(_)) => {},
+            Ok(Arp::Windows(future)) => self.arp = Some(future),
+            Err(error) => error!("ARP error: {:?}", error),
+        }
+
+        /*
+        RFC 2131 §4.1
+        If unicasting is not possible, the message
+        MAY be sent as an IP broadcast using an IP broadcast address
+        (preferably 0xffffffff) as the IP destination address and the link-
+        layer broadcast address as the link-layer destination address.
+
+        Note: I don't know yet when unicasting is not possible.
+        */
+
+        response.your_ip_address
     }
 }
 
@@ -119,10 +167,11 @@ impl Future for Server {
     /// Works infinite time.
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
+            poll_arp!(self.arp);
             poll_complete!(self.socket);
             let (addr, request) = poll!(self.socket);
-            let dhcp_message_type = validate!(request, addr);
             log_receive!(request, addr);
+            let dhcp_message_type = validate!(request, addr);
 
             if let Some(dhcp_server_id) = request.options.dhcp_server_id {
                 if dhcp_server_id != self.server_ip_address {
@@ -165,7 +214,7 @@ impl Future for Server {
                     ) {
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
-                            let destination = destination!(request, response, self.iface_name);
+                            let destination = self.destination(&request, &response);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
                         },
@@ -206,7 +255,7 @@ impl Future for Server {
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let destination = destination!(request, response, self.iface_name);
+                                let destination = self.destination(&request, &response);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
                             },
@@ -228,7 +277,7 @@ impl Future for Server {
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let destination = destination!(request, response, self.iface_name);
+                                let destination = self.destination(&request, &response);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
                             },
@@ -255,7 +304,7 @@ impl Future for Server {
                     match self.database.renew(client_id, &request.client_ip_address, lease_time) {
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                            let destination = destination!(request, response, self.iface_name);
+                            let destination = self.destination(&request, &response);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
                         },
@@ -304,7 +353,7 @@ impl Future for Server {
 
                     info!("Address {} has been taken by some client manually", request.client_ip_address);
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
-                    let destination = destination!(request, response, self.iface_name);
+                    let destination = self.destination(&request, &response);
                     log_send!(response, destination);
                     start_send!(self.socket, destination, response);
                 },

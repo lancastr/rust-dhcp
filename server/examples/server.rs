@@ -1,5 +1,5 @@
 //! Run this with administrator privileges where it is required
-//! in order to bind the DHCP server socket to its port 67.
+//! in order to bind the DHCP server socket to its port 67 or use the ARP API.
 
 #[macro_use] extern crate log;
 extern crate tokio;
@@ -27,7 +27,7 @@ fn main() {
         iface_name,
 
         (Ipv4Addr::new(192,168,0,50), Ipv4Addr::new(192,168,0,99)),
-        (Ipv4Addr::new(192,168,0,100), Ipv4Addr::new(192,168,0,199)),
+        (Ipv4Addr::new(192,168,0,61), Ipv4Addr::new(192,168,0,199)),
         Box::new(server::RamStorage::new()),
 
         Ipv4Addr::new(255,255,0,0),

@@ -6,6 +6,7 @@ authors = ["hedgar <hedgar2017@gmail.com>"]
 [dependencies]
 log = "0.4.3"
 tokio = "0.1.7"
+tokio-process = "0.2.2"
 futures = "0.1.21"
 bytes = "0.4.8"
 eui48 = "0.3.2"

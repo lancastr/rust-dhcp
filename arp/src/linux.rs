@@ -1,5 +1,3 @@
-
-
 use std::{
     ptr,
     mem,
@@ -34,6 +32,14 @@ use eui48::{
     EUI48LEN,
 };
 
+use super::Arp;
+
+const ARPHRD_ETHER: c_ushort = 0x01;
+const AF_INET: c_ushort = 0x02;
+const ATF_COM: c_int = 0x02;
+
+const MAX_IFACE_LEN: usize = 15;
+
 ioctl_write_ptr_bad!(siocsarp, libc::SIOCSARP, arpreq);
 
 #[derive(Debug)]
@@ -42,13 +48,7 @@ pub enum Error {
     Syscall(nix::Error),
 }
 
-const ARPHRD_ETHER: c_ushort = 0x01;
-const AF_INET: c_ushort = 0x02;
-const ATF_COM: c_int = 0x02;
-
-const MAX_IFACE_LEN: usize = 15;
-
-pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(), Error> {
+pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp, Error> {
     let mut req: arpreq = unsafe { mem::zeroed() };
 
     let addr = SocketAddr::new(IpAddr::V4(ip), 0);
@@ -88,5 +88,5 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(),
     unsafe { siocsarp(fd, &req) }
         .map_err(|error| Error::Syscall(error))?;
 
-    Ok(())
+    Ok(Arp::Linux(()))
 }

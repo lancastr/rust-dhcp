@@ -94,20 +94,15 @@ impl Sink for DhcpFramed {
     /// Returns `Ok(AsyncSink::NotReady(item))` if there is pending data.
     ///
     /// # Errors
-    /// `io::Error` on a socket error.
     /// `io::Error` on an encoding error.
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
         if self.pending.is_some() {
-            self.poll_complete()?;
-            if self.pending.is_some() {
-                return Ok(AsyncSink::NotReady(item));
-            }
+            return Ok(AsyncSink::NotReady(item));
         }
 
         let (addr, message) = item;
         let amount = message.to_bytes(&mut self.buf_write)?;
         self.pending = Some((addr, amount));
-        self.poll_complete()?;
 
         Ok(AsyncSink::Ready)
     }

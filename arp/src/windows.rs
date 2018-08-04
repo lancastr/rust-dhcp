@@ -10,11 +10,15 @@ use eui48::{
     MacAddress,
     MacAddressFormat,
 };
+use tokio_process::{
+    CommandExt,
+};
+
+use super::Arp;
 
 #[derive(Debug)]
 pub enum Error {
     Process(io::Error),
-    Netsh((i32, String)),
 }
 
 impl From<io::Error> for Error {
@@ -23,8 +27,8 @@ impl From<io::Error> for Error {
     }
 }
 
-pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(), Error> {
-    let netsh = Command::new("netsh")
+pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp, Error> {
+    Ok(Arp::Windows(Command::new("netsh")
         .arg("interface")
         .arg("ip")
         .arg("add")
@@ -32,14 +36,5 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<(),
         .arg(iface)
         .arg(ip.to_string())
         .arg(hwaddr.to_string(MacAddressFormat::Canonical))
-        .output()?;
-
-    if !netsh.status.success() {
-        return Err(Error::Netsh((
-            netsh.status.code().unwrap_or_default(),
-            String::from_utf8_lossy(&netsh.stdout).trim().to_owned(),
-        )));
-    }
-
-    Ok(())
+        .output_async()))
 }

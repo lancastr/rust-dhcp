@@ -10,6 +10,7 @@ mod lease;
 
 #[macro_use] extern crate log;
 extern crate tokio;
+extern crate tokio_process;
 extern crate futures;
 extern crate bytes;
 extern crate eui48;
