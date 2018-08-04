@@ -178,22 +178,22 @@ impl Database {
         }
 
         // address allocation case 3
-//        if let Some(address) = requested_address {
-//            if self.is_address_available(&address)? {
-//                let lease_time = self.offer(&address, client_id, lease_time, false)?;
-//                let offer = Offer{
-//                    address,
-//                    lease_time,
-//                    message: "Offering the requested address".to_owned(),
-//                };
-//                trace!("Offering to the client {:?} the requested address {}", client_id, offer.address);
-//                return Ok(offer);
-//            } else {
-//                trace!("The requested address {} is not available", address);
-//            }
-//        } else {
-//            trace!("Client {:?} does not request an address", client_id);
-//        }
+        if let Some(address) = requested_address {
+            if self.is_address_available(&address)? {
+                let lease_time = self.offer(&address, client_id, lease_time, false)?;
+                let offer = Offer{
+                    address,
+                    lease_time,
+                    message: "Offering the requested address".to_owned(),
+                };
+                trace!("Offering to the client {:?} the requested address {}", client_id, offer.address);
+                return Ok(offer);
+            } else {
+                trace!("The requested address {} is not available", address);
+            }
+        } else {
+            trace!("Client {:?} does not request an address", client_id);
+        }
 
         // address allocation case 4, giaddr stuff not implemented
         let address = self.get_dynamic_available()?.ok_or(Error::DynamicPoolExhausted)?;
