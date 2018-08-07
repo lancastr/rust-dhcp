@@ -14,6 +14,10 @@ use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use dhcp_bpf::Bpf;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use futures_cpupool::CpuPool;
 use storage::Storage;
 
 /// The struct implementing the `Future` trait.
@@ -24,6 +28,10 @@ pub struct Server {
     builder: MessageBuilder,
     database: Database,
     arp: Option<OutputAsync>,
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    cpu_pool: CpuPool,
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    bpf: Bpf,
 }
 
 impl Server {
@@ -86,9 +94,13 @@ impl Server {
         let storage = Database::new(static_address_range, dynamic_address_range, storage);
 
         Ok(Server {
+            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            cpu_pool: CpuPool::new(4), //FIXME
+            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            bpf: Bpf::new(&iface_name)?,
             socket,
-            server_ip_address,
             iface_name,
+            server_ip_address,
             builder: message_builder,
             database: storage,
             arp: None,
@@ -195,7 +207,7 @@ impl Future for Server {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
                             let destination = self.destination(&request, &response);
                             log_send!(response, destination);
-                            start_send!(self.socket, destination, response);
+                            start_send!(self, self.socket, destination, response);
                         }
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
@@ -236,14 +248,14 @@ impl Future for Server {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 let destination = self.destination(&request, &response);
                                 log_send!(response, destination);
-                                start_send!(self.socket, destination, response);
+                                start_send!(self, self.socket, destination, response);
                             }
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.builder.dhcp_request_to_nak(&request, &error);
                                 let destination = Ipv4Addr::new(255, 255, 255, 255);
                                 log_send!(response, destination);
-                                start_send!(self.socket, destination, response);
+                                start_send!(self, self.socket, destination, response);
                             }
                         };
                         continue;
@@ -258,7 +270,7 @@ impl Future for Server {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 let destination = self.destination(&request, &response);
                                 log_send!(response, destination);
-                                start_send!(self.socket, destination, response);
+                                start_send!(self, self.socket, destination, response);
                             }
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
@@ -267,7 +279,7 @@ impl Future for Server {
                                         self.builder.dhcp_request_to_nak(&request, &error);
                                     let destination = Ipv4Addr::new(255, 255, 255, 255);
                                     log_send!(response, destination);
-                                    start_send!(self.socket, destination, response);
+                                    start_send!(self, self.socket, destination, response);
                                 }
                                 /*
                                 RFC 2131 §4.3.2
@@ -288,7 +300,7 @@ impl Future for Server {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
                             let destination = self.destination(&request, &response);
                             log_send!(response, destination);
-                            start_send!(self.socket, destination, response);
+                            start_send!(self, self.socket, destination, response);
                         }
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
@@ -340,7 +352,7 @@ impl Future for Server {
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
                     let destination = self.destination(&request, &response);
                     log_send!(response, destination);
-                    start_send!(self.socket, destination, response);
+                    start_send!(self, self.socket, destination, response);
                 }
                 _ => {}
             }

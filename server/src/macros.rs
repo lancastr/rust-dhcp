@@ -52,17 +52,44 @@ macro_rules! validate (
 
 /// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send (
-    ($socket:expr, $destination:expr, $message:expr) => (
+    ($self:expr, $socket:expr, $destination:expr, $message:expr) => (
         let destination = SocketAddr::new(IpAddr::V4($destination), DHCP_PORT_CLIENT);
-        match $socket.start_send((destination, $message)) {
-            Ok(AsyncSink::Ready) => {},
-            Ok(AsyncSink::NotReady(_)) => {
-                panic!("Must wait for poll_complete first");
-            },
-            Err(error) => {
-                warn!("Socket error: {}", error);
-                continue;
-            },
+
+        let mut processed = false;
+
+        #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+        {
+            println!("Sending to {:?} response!", destination);
+            if let IpAddr::V4(ipv4) = destination.ip() {
+                if ipv4.is_broadcast() {
+                    println!("Broadcast response!");
+                    let mut bpf = $self.bpf.clone();
+                    $self.cpu_pool.clone().spawn_fn(move || {
+                        let packet = vec![0u8; 512];
+                        if let Err(e) = bpf.write_all(&packet) {
+                            error!("Could not send broadcast response through bpf: {:?}", e);
+                        };
+                        println!("BPF sent!");
+
+                        Ok::<(),()>(())
+                    }).forget();
+
+                    processed = true;
+                }
+            }
+        }
+
+        if !processed {
+            match $socket.start_send((destination, $message)) {
+                Ok(AsyncSink::Ready) => {},
+                Ok(AsyncSink::NotReady(_)) => {
+                    panic!("Must wait for poll_complete first");
+                },
+                Err(error) => {
+                    warn!("Socket error: {}", error);
+                    continue;
+                },
+            }
         }
     );
 );

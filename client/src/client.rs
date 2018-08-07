@@ -262,7 +262,7 @@ impl Stream for Client {
                             self.options.address_time,
                         );
                         log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
+                        start_send!(self, self.sink, self.state.destination(), request);
                         self.state.set_discover_sent(true);
                     }
 
@@ -306,7 +306,7 @@ impl Stream for Client {
                             expect!(self.state.dhcp_server_id()),
                         );
                         log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
+                        start_send!(self, self.sink, self.state.destination(), request);
                         self.state.set_request_sent(true);
                     }
 
@@ -388,7 +388,7 @@ impl Stream for Client {
                             self.options.address_time,
                         );
                         log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
+                        start_send!(self, self.sink, self.state.destination(), request);
                         self.state.set_request_sent(true);
                     }
 
@@ -478,7 +478,7 @@ impl Stream for Client {
                             self.options.address_time,
                         );
                         log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
+                        start_send!(self, self.sink, self.state.destination(), request);
                         self.state.set_request_sent(true);
                     }
 
@@ -542,7 +542,7 @@ impl Stream for Client {
                             self.options.address_time,
                         );
                         log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
+                        start_send!(self, self.sink, self.state.destination(), request);
                         self.state.set_request_sent(true);
                     }
 
