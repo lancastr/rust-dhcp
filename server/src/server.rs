@@ -110,7 +110,7 @@ impl Server {
             "Injecting an ARP entry {} -> {}",
             request.client_hardware_address, response.your_ip_address,
         );
-        match arp::add(
+        match dhcp_arp::add(
             request.client_hardware_address,
             response.your_ip_address,
             self.iface_name.to_owned(),
