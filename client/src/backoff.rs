@@ -1,5 +1,5 @@
 //! The Binary Exponential Backoff module.
-//! 
+//!
 //! DHCP clients are responsible for all message retransmission.  The
 //! client MUST adopt a retransmission strategy that incorporates a
 //! randomized exponential backoff algorithm to determine the delay
@@ -18,29 +18,11 @@
 //! MAY provide an indication of retransmission attempts to the user as
 //! an indication of the progress of the configuration process.
 
-use std::{
-    time::{
-        Instant,
-        Duration,
-    },
-};
+use std::time::{Duration, Instant};
 
-use futures::{
-    Async,
-    Future,
-    Poll,
-    Stream,
-};
-use tokio::{
-    timer::{
-        Delay,
-        Error,
-    },
-};
-use rand::{
-    self,
-    Rng,
-};
+use futures::{Async, Future, Poll, Stream};
+use rand::{self, Rng};
+use tokio::timer::{Delay, Error};
 
 /// This `value`, this `-value` or `0` is added to each timeout in seconds.
 const AMPLITUDE: i32 = 1;

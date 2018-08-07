@@ -1,50 +1,34 @@
 //! The main DHCP client module.
 
-use std::{
-    net::{
-        IpAddr,
-        Ipv4Addr,
-        SocketAddr,
-    },
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use tokio::{
-    io,
-    prelude::*,
-};
-use futures::StartSend;
 use eui48::MacAddress;
+use futures::StartSend;
 use hostname;
+use tokio::{io, prelude::*};
 
-use dhcp_protocol::{
-    Message,
-    MessageType,
-    DHCP_PORT_SERVER,
-};
+use dhcp_protocol::{Message, MessageType, DHCP_PORT_SERVER};
 
 use builder::MessageBuilder;
-use state::{
-    State,
-    DhcpState,
-};
+use state::{DhcpState, State};
 
 /// May be used to request stuff explicitly.
 struct RequestOptions {
     /// Explicit network address request.
-    address_request     : Option<Ipv4Addr>,
+    address_request: Option<Ipv4Addr>,
     /// Explicit lease time request.
-    address_time        : Option<u32>,
+    address_time: Option<u32>,
 }
 
 /// The `Client` future result type.
 #[derive(Debug, Clone)]
 pub struct Configuration {
-    pub your_ip_address     : Ipv4Addr,
-    pub server_ip_address   : Ipv4Addr,
-    pub subnet_mask         : Option<Ipv4Addr>,
-    pub routers             : Option<Vec<Ipv4Addr>>,
-    pub domain_name_servers : Option<Vec<Ipv4Addr>>,
-    pub static_routes       : Option<Vec<(Ipv4Addr, Ipv4Addr)>>,
+    pub your_ip_address: Ipv4Addr,
+    pub server_ip_address: Ipv4Addr,
+    pub subnet_mask: Option<Ipv4Addr>,
+    pub routers: Option<Vec<Ipv4Addr>>,
+    pub domain_name_servers: Option<Vec<Ipv4Addr>>,
+    pub static_routes: Option<Vec<(Ipv4Addr, Ipv4Addr)>>,
 }
 
 /// The commands used for `Sink` to send `DHCPRELEASE`, `DHCPDECLINE` and `DHCPINFORM` messages.
@@ -67,11 +51,11 @@ type DhcpSink = Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + 
 
 /// The struct implementing the `Future` trait.
 pub struct Client {
-    stream              : Box<DhcpStream>,
-    sink                : Box<DhcpSink>,
-    builder             : MessageBuilder,
-    state               : State,
-    options             : RequestOptions,
+    stream: Box<DhcpStream>,
+    sink: Box<DhcpSink>,
+    builder: MessageBuilder,
+    state: State,
+    options: RequestOptions,
 }
 
 impl Client {
@@ -119,15 +103,15 @@ impl Client {
     /// The server may lease the address for different amount time if it decides so.
     ///
     pub fn new(
-        stream                  : Box<DhcpStream>,
-        sink                    : Box<DhcpSink>,
-        client_hardware_address : MacAddress,
-        client_id               : Option<Vec<u8>>,
-        hostname                : Option<String>,
-        server_address          : Option<Ipv4Addr>,
-        client_address          : Option<Ipv4Addr>,
-        address_request         : Option<Ipv4Addr>,
-        address_time            : Option<u32>,
+        stream: Box<DhcpStream>,
+        sink: Box<DhcpSink>,
+        client_hardware_address: MacAddress,
+        client_id: Option<Vec<u8>>,
+        hostname: Option<String>,
+        server_address: Option<Ipv4Addr>,
+        client_address: Option<Ipv4Addr>,
+        address_request: Option<Ipv4Addr>,
+        address_time: Option<u32>,
     ) -> Self {
         let hostname: Option<String> = if hostname.is_none() {
             hostname::get_hostname()
@@ -162,17 +146,13 @@ impl Client {
 
             Note: must be done with the external user provided Stream+Sink abstraction.
             */
-            (Ipv4Addr::new(255,255,255,255), true)
+            (Ipv4Addr::new(255, 255, 255, 255), true)
         };
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
 
         let client_id = client_id.unwrap_or(client_hardware_address.as_bytes().to_vec());
 
-        let message_builder = MessageBuilder::new(
-            client_hardware_address,
-            client_id,
-            hostname,
-        );
+        let message_builder = MessageBuilder::new(client_hardware_address, client_id, hostname);
 
         let mut options = RequestOptions {
             address_request,
@@ -183,7 +163,7 @@ impl Client {
             Some(ip) => {
                 options.address_request = Some(ip);
                 DhcpState::InitReboot
-            },
+            }
             None => DhcpState::Init,
         };
 
@@ -264,7 +244,7 @@ impl Stream for Client {
                     */
 
                     self.state.init_to_selecting();
-                },
+                }
                 DhcpState::Selecting => {
                     /*
                     RFC 2131 §4.4.1
@@ -292,11 +272,11 @@ impl Stream for Client {
                             poll_backoff!(self.state.timer_offer);
                             self.state.set_discover_sent(false);
                             continue;
-                        },
+                        }
                         Err(error) => {
                             warn!("Socket error: {}", error);
                             continue;
-                        },
+                        }
                     };
 
                     let dhcp_message_type = validate!(response, addr);
@@ -309,7 +289,7 @@ impl Stream for Client {
                         expect!(response.options.address_time),
                         Some(expect!(response.options.dhcp_server_id)),
                     );
-                },
+                }
                 current @ DhcpState::Requesting => {
                     /*
                     RFC 2131 §4.4.1
@@ -333,16 +313,20 @@ impl Stream for Client {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(data)) => expect!(data),
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Init = poll_backoff!(self.state.timer_ack, DhcpState::Selecting, DhcpState::Init) {
+                            if let DhcpState::Init = poll_backoff!(
+                                self.state.timer_ack,
+                                DhcpState::Selecting,
+                                DhcpState::Init
+                            ) {
                                 self.state.requesting_to_init();
                             }
                             self.state.set_request_sent(false);
                             continue;
-                        },
+                        }
                         Err(error) => {
                             warn!("Socket error: {}", error);
                             continue;
-                        },
+                        }
                     };
 
                     let dhcp_message_type = validate!(response, addr);
@@ -354,12 +338,12 @@ impl Stream for Client {
                             warn!("Got {} in {} state", dhcp_message_type, current);
                             self.state.requesting_to_init();
                             continue;
-                        },
-                        MessageType::DhcpAck => {},
+                        }
+                        MessageType::DhcpAck => {}
                         _ => {
                             warn!("Got an unexpected DHCP message type {}", dhcp_message_type);
                             continue;
-                        },
+                        }
                     }
 
                     self.state.requesting_to_bound(
@@ -369,14 +353,14 @@ impl Stream for Client {
                         expect!(response.options.address_time),
                     );
                     return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address     : response.your_ip_address,
-                        server_ip_address   : response.server_ip_address,
-                        subnet_mask         : response.options.subnet_mask,
-                        routers             : response.options.routers,
-                        domain_name_servers : response.options.domain_name_servers,
-                        static_routes       : response.options.static_routes,
+                        your_ip_address: response.your_ip_address,
+                        server_ip_address: response.server_ip_address,
+                        subnet_mask: response.options.subnet_mask,
+                        routers: response.options.routers,
+                        domain_name_servers: response.options.domain_name_servers,
+                        static_routes: response.options.static_routes,
                     })));
-                },
+                }
 
                 DhcpState::InitReboot => {
                     /*
@@ -387,7 +371,7 @@ impl Stream for Client {
                     */
 
                     self.state.initreboot_to_rebooting();
-                },
+                }
                 current @ DhcpState::Rebooting => {
                     /*
                     RFC 2131 §4.4.2
@@ -411,16 +395,20 @@ impl Stream for Client {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(data)) => expect!(data),
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Init = poll_backoff!(self.state.timer_ack, DhcpState::InitReboot, DhcpState::Init) {
+                            if let DhcpState::Init = poll_backoff!(
+                                self.state.timer_ack,
+                                DhcpState::InitReboot,
+                                DhcpState::Init
+                            ) {
                                 self.state.rebooting_to_init();
                             }
                             self.state.set_request_sent(false);
                             continue;
-                        },
+                        }
                         Err(error) => {
                             warn!("Socket error: {}", error);
                             continue;
-                        },
+                        }
                     };
 
                     let dhcp_message_type = validate!(response, addr);
@@ -432,12 +420,12 @@ impl Stream for Client {
                             warn!("Got {} in {} state", dhcp_message_type, current);
                             self.state.rebooting_to_init();
                             continue;
-                        },
-                        MessageType::DhcpAck => {},
+                        }
+                        MessageType::DhcpAck => {}
                         _ => {
                             warn!("Got an unexpected DHCP message type {}", dhcp_message_type);
                             continue;
-                        },
+                        }
                     }
 
                     self.state.rebooting_to_bound(
@@ -448,14 +436,14 @@ impl Stream for Client {
                         Some(expect!(response.options.dhcp_server_id)),
                     );
                     return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address     : response.your_ip_address,
-                        server_ip_address   : response.server_ip_address,
-                        subnet_mask         : response.options.subnet_mask,
-                        routers             : response.options.routers,
-                        domain_name_servers : response.options.domain_name_servers,
-                        static_routes       : response.options.static_routes,
+                        your_ip_address: response.your_ip_address,
+                        server_ip_address: response.server_ip_address,
+                        subnet_mask: response.options.subnet_mask,
+                        routers: response.options.routers,
+                        domain_name_servers: response.options.domain_name_servers,
+                        static_routes: response.options.static_routes,
                     })));
-                },
+                }
 
                 DhcpState::Bound => {
                     /*
@@ -471,7 +459,7 @@ impl Stream for Client {
 
                     poll_delay!(self.state.timer_renewal);
                     self.state.bound_to_renewing();
-                },
+                }
                 DhcpState::Renewing => {
                     /*
                     RFC 2131 §4.4.5
@@ -497,16 +485,20 @@ impl Stream for Client {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(data)) => expect!(data),
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Rebinding = poll_forthon!(self.state.timer_rebinding, DhcpState::Renewing, DhcpState::Rebinding) {
+                            if let DhcpState::Rebinding = poll_forthon!(
+                                self.state.timer_rebinding,
+                                DhcpState::Renewing,
+                                DhcpState::Rebinding
+                            ) {
                                 self.state.renewing_to_rebinding();
                             }
                             self.state.set_request_sent(false);
                             continue;
-                        },
+                        }
                         Err(error) => {
                             warn!("Socket error: {}", error);
                             continue;
-                        },
+                        }
                     };
 
                     let dhcp_message_type = validate!(response, addr);
@@ -521,14 +513,14 @@ impl Stream for Client {
                         expect!(response.options.address_time),
                     );
                     return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address     : response.your_ip_address,
-                        server_ip_address   : response.server_ip_address,
-                        subnet_mask         : response.options.subnet_mask,
-                        routers             : response.options.routers,
-                        domain_name_servers : response.options.domain_name_servers,
-                        static_routes       : response.options.static_routes,
+                        your_ip_address: response.your_ip_address,
+                        server_ip_address: response.server_ip_address,
+                        subnet_mask: response.options.subnet_mask,
+                        routers: response.options.routers,
+                        domain_name_servers: response.options.domain_name_servers,
+                        static_routes: response.options.static_routes,
                     })));
-                },
+                }
                 DhcpState::Rebinding => {
                     /*
                     RFC 2131 §4.4.5
@@ -557,17 +549,21 @@ impl Stream for Client {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(data)) => expect!(data),
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Init = poll_forthon!(self.state.timer_expiration, DhcpState::Rebinding, DhcpState::Init) {
+                            if let DhcpState::Init = poll_forthon!(
+                                self.state.timer_expiration,
+                                DhcpState::Rebinding,
+                                DhcpState::Init
+                            ) {
                                 warn!("Unable to extend the expired lease!");
                                 self.state.rebinding_to_init();
                             }
                             self.state.set_request_sent(false);
                             continue;
-                        },
+                        }
                         Err(error) => {
                             warn!("Socket error: {}", error);
                             continue;
-                        },
+                        }
                     };
 
                     let dhcp_message_type = validate!(response, addr);
@@ -582,14 +578,14 @@ impl Stream for Client {
                         expect!(response.options.address_time),
                     );
                     return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address     : response.your_ip_address,
-                        server_ip_address   : response.server_ip_address,
-                        subnet_mask         : response.options.subnet_mask,
-                        routers             : response.options.routers,
-                        domain_name_servers : response.options.domain_name_servers,
-                        static_routes       : response.options.static_routes,
+                        your_ip_address: response.your_ip_address,
+                        server_ip_address: response.server_ip_address,
+                        subnet_mask: response.options.subnet_mask,
+                        routers: response.options.routers,
+                        domain_name_servers: response.options.domain_name_servers,
+                        static_routes: response.options.static_routes,
                     })));
-                },
+                }
             }
         }
     }
@@ -600,12 +596,20 @@ impl Sink for Client {
     type SinkError = io::Error;
 
     /// Translates a `Command` into a DHCP message and sends to the user provided `Sink`.
-    fn start_send(&mut self, command: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
+    fn start_send(
+        &mut self,
+        command: Self::SinkItem,
+    ) -> StartSend<Self::SinkItem, Self::SinkError> {
         let (request, destination) = match command {
-            Command::Release{ref message} => {
+            Command::Release { ref message } => {
                 let dhcp_server_id = match self.state.dhcp_server_id() {
                     Some(dhcp_server_id) => dhcp_server_id,
-                    None => return Err(io::Error::new(io::ErrorKind::AddrNotAvailable, "Nothing to release")),
+                    None => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::AddrNotAvailable,
+                            "Nothing to release",
+                        ))
+                    }
                 };
                 let destination = SocketAddr::new(IpAddr::V4(dhcp_server_id), DHCP_PORT_SERVER);
                 let request = self.builder.release(
@@ -615,13 +619,24 @@ impl Sink for Client {
                     message.to_owned(),
                 );
                 (request, destination)
-            },
-            Command::Decline{ref address, ref message} => {
+            }
+            Command::Decline {
+                ref address,
+                ref message,
+            } => {
                 let dhcp_server_id = match self.state.dhcp_server_id() {
                     Some(dhcp_server_id) => dhcp_server_id,
-                    None => return Err(io::Error::new(io::ErrorKind::AddrNotAvailable, "Nothing to decline")),
+                    None => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::AddrNotAvailable,
+                            "Nothing to decline",
+                        ))
+                    }
                 };
-                let destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(255,255,255,255)), DHCP_PORT_SERVER);
+                let destination = SocketAddr::new(
+                    IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)),
+                    DHCP_PORT_SERVER,
+                );
                 let request = self.builder.decline(
                     self.state.xid(),
                     address.to_owned(),
@@ -629,11 +644,11 @@ impl Sink for Client {
                     message.to_owned(),
                 );
                 (request, destination)
-            },
-            Command::Inform{ref address} => {
+            }
+            Command::Inform { ref address } => {
                 let dhcp_server_id = match self.state.dhcp_server_id() {
                     Some(dhcp_server_id) => dhcp_server_id,
-                    None => Ipv4Addr::new(255,255,255,255),
+                    None => Ipv4Addr::new(255, 255, 255, 255),
                 };
                 let destination = SocketAddr::new(IpAddr::V4(dhcp_server_id), DHCP_PORT_SERVER);
                 let request = self.builder.inform(
@@ -642,7 +657,7 @@ impl Sink for Client {
                     address.to_owned(),
                 );
                 (request, destination)
-            },
+            }
         };
 
         log_send!(request, destination);

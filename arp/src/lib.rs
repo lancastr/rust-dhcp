@@ -11,10 +11,11 @@ extern crate tokio_process;
 #[cfg(target_os = "linux")]
 extern crate libc;
 #[cfg(target_os = "linux")]
-#[macro_use] extern crate nix;
+#[macro_use]
+extern crate nix;
 
-use std::net::Ipv4Addr;
 use eui48::MacAddress;
+use std::net::Ipv4Addr;
 use tokio_process::OutputAsync;
 
 /// The OS-polymorphic OS-error.

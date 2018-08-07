@@ -42,52 +42,35 @@ where
     /// # Errors
     /// Must return `Error::GetClient(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn get_client(
-        &self,
-        address: &Ipv4Addr,
-    ) -> Result<Option<Vec<u8>>, Error>;
+    fn get_client(&self, address: &Ipv4Addr) -> Result<Option<Vec<u8>>, Error>;
 
     /// Must associate the client with the given address.
     ///
     /// # Errors
     /// Must return `Error::AddClient(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn add_client(
-        &mut self,
-        address: &Ipv4Addr,
-        client_id: &[u8],
-    ) -> Result<(), Error>;
+    fn add_client(&mut self, address: &Ipv4Addr, client_id: &[u8]) -> Result<(), Error>;
 
     /// Must disassociate the client ID from the given address.
     ///
     /// # Errors
     /// Must return `Error::DeleteClient(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn delete_client(
-        &mut self,
-        address: &Ipv4Addr,
-    ) -> Result<(), Error>;
+    fn delete_client(&mut self, address: &Ipv4Addr) -> Result<(), Error>;
 
     /// Must return the address lease of the given client if the lease exists.
     ///
     /// # Errors
     /// Must return `Error::GetLease(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn get_lease(
-        &self,
-        client_id: &[u8],
-    ) -> Result<Option<Lease>, Error>;
+    fn get_lease(&self, client_id: &[u8]) -> Result<Option<Lease>, Error>;
 
     /// Must associate the client ID with the given lease.
     ///
     /// # Errors
     /// Must return `Error::AddLease(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn add_lease(
-        &mut self,
-        client_id: &[u8],
-        lease: Lease,
-    ) -> Result<(), Error>;
+    fn add_lease(&mut self, client_id: &[u8], lease: Lease) -> Result<(), Error>;
 
     /// Must update the lease associated with the given client ID if the lease exists.
     ///
@@ -105,18 +88,12 @@ where
     /// # Errors
     /// Must return `Error::CheckFrozen(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn check_frozen(
-        &self,
-        address: &Ipv4Addr,
-    ) -> Result<bool, Error>;
+    fn check_frozen(&self, address: &Ipv4Addr) -> Result<bool, Error>;
 
     /// Must mark the address as frozen due to a client `DHCPDECLINE` report.
     ///
     /// # Errors
     /// Must return `Error::AddFrozen(desc)` if there is a database I/O error
     /// or `Error::Other(desc)` on another error.
-    fn add_frozen(
-        &mut self,
-        address: &Ipv4Addr,
-    ) -> Result<(), Error>;
+    fn add_frozen(&mut self, address: &Ipv4Addr) -> Result<(), Error>;
 }

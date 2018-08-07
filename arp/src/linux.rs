@@ -1,35 +1,15 @@
 use std::{
-    ptr,
-    mem,
     cmp,
-    net::{
-        SocketAddr,
-        IpAddr,
-        Ipv4Addr,
-    },
+    mem,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    ptr,
 };
 
-use libc::{
-    self,
-    arpreq,
-    c_char,
-    c_ushort,
-    c_int,
-};
+use eui48::{EUI48LEN, MacAddress};
+use libc::{self, arpreq, c_char, c_int, c_ushort};
 use nix::{
     self,
-    sys::{
-        socket::{
-            self,
-            AddressFamily,
-            SockType,
-            SockFlag,
-        }
-    }
-};
-use eui48::{
-    MacAddress,
-    EUI48LEN,
+    sys::socket::{self, AddressFamily, SockFlag, SockType},
 };
 
 use super::Arp;
@@ -53,7 +33,9 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp
 
     let addr = SocketAddr::new(IpAddr::V4(ip), 0);
     req.arp_pa = unsafe {
-        *socket::SockAddr::Inet(socket::InetAddr::from_std(&addr)).as_ffi_pair().0
+        *socket::SockAddr::Inet(socket::InetAddr::from_std(&addr))
+            .as_ffi_pair()
+            .0
     };
 
     req.arp_ha.sa_family = ARPHRD_ETHER;
@@ -85,8 +67,7 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp
         None,
     ).map_err(|error| Error::Socket(error))?;
 
-    unsafe { siocsarp(fd, &req) }
-        .map_err(|error| Error::Syscall(error))?;
+    unsafe { siocsarp(fd, &req) }.map_err(|error| Error::Syscall(error))?;
 
     Ok(Arp::Linux(()))
 }

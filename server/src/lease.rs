@@ -18,14 +18,14 @@ const OFFER_TIMEOUT: u32 = 60;
 /// A lease record of the DHCP server lease database.
 #[derive(Clone)]
 pub struct Lease {
-    address             : Ipv4Addr,
-    state               : State,
-    lease_time          : u32,
-    offered_at          : u32,
-    assigned_at         : u32,
-    renewed_at          : u32,
-    released_at         : u32,
-    expires_at          : u32,
+    address: Ipv4Addr,
+    state: State,
+    lease_time: u32,
+    offered_at: u32,
+    assigned_at: u32,
+    renewed_at: u32,
+    released_at: u32,
+    expires_at: u32,
 }
 
 #[allow(dead_code)]
@@ -36,13 +36,13 @@ impl Lease {
 
         Lease {
             address,
-            state               : State::Offered,
+            state: State::Offered,
             lease_time,
             offered_at,
-            assigned_at         : 0,
-            renewed_at          : 0,
-            released_at         : 0,
-            expires_at          : 0,
+            assigned_at: 0,
+            renewed_at: 0,
+            released_at: 0,
+            expires_at: 0,
         }
     }
 
@@ -115,21 +115,33 @@ impl Lease {
     ///
     /// Does not check for expiration.
     pub fn is_offered(&self) -> bool {
-        if let State::Offered = self.state { true } else { false }
+        if let State::Offered = self.state {
+            true
+        } else {
+            false
+        }
     }
 
     /// Check whether the lease is in `Assigned` state.
     ///
     /// Does not check for expiration.
     pub fn is_assigned(&self) -> bool {
-        if let State::Assigned = self.state { true } else { false }
+        if let State::Assigned = self.state {
+            true
+        } else {
+            false
+        }
     }
 
     /// Check whether the lease is in `Released` state.
     ///
     /// The lease can be only manually released.
     pub fn is_released(&self) -> bool {
-        if let State::Released = self.state { true } else { false }
+        if let State::Released = self.state {
+            true
+        } else {
+            false
+        }
     }
 
     /// Check whether the lease's offer is expired.

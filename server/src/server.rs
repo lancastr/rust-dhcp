@@ -1,47 +1,27 @@
 //! The main DHCP server module.
 
-use std::{
-    net::{
-        IpAddr,
-        Ipv4Addr,
-        SocketAddr,
-    },
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use tokio::{
-    io,
-    prelude::*,
-};
-use tokio_process::OutputAsync;
 use hostname;
+use tokio::{io, prelude::*};
+use tokio_process::OutputAsync;
 
+use dhcp_arp::{self, Arp};
 use dhcp_framed::DhcpFramed;
-use dhcp_protocol::{
-    Message,
-    MessageType,
-    DHCP_PORT_SERVER,
-    DHCP_PORT_CLIENT,
-};
-use dhcp_arp::{
-    self,
-    Arp,
-};
+use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 
 use builder::MessageBuilder;
-use database::{
-    Error::LeaseInvalid,
-    Database,
-};
+use database::{Database, Error::LeaseInvalid};
 use storage::Storage;
 
 /// The struct implementing the `Future` trait.
 pub struct Server {
-    socket                  : DhcpFramed,
-    server_ip_address       : Ipv4Addr,
-    iface_name              : String,
-    builder                 : MessageBuilder,
-    database                : Database,
-    arp                     : Option<OutputAsync>,
+    socket: DhcpFramed,
+    server_ip_address: Ipv4Addr,
+    iface_name: String,
+    builder: MessageBuilder,
+    database: Database,
+    arp: Option<OutputAsync>,
 }
 
 impl Server {
@@ -77,36 +57,31 @@ impl Server {
     /// Static data for client configuration.
     ///
     pub fn new(
-        server_ip_address       : Ipv4Addr,
-        iface_name              : String,
-        static_address_range    : (Ipv4Addr, Ipv4Addr),
-        dynamic_address_range   : (Ipv4Addr, Ipv4Addr),
-        storage                 : Box<Storage>,
+        server_ip_address: Ipv4Addr,
+        iface_name: String,
+        static_address_range: (Ipv4Addr, Ipv4Addr),
+        dynamic_address_range: (Ipv4Addr, Ipv4Addr),
+        storage: Box<Storage>,
 
-        subnet_mask             : Ipv4Addr,
-        routers                 : Vec<Ipv4Addr>,
-        domain_name_servers     : Vec<Ipv4Addr>,
-        static_routes           : Vec<(Ipv4Addr, Ipv4Addr)>,
+        subnet_mask: Ipv4Addr,
+        routers: Vec<Ipv4Addr>,
+        domain_name_servers: Vec<Ipv4Addr>,
+        static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
     ) -> Result<Self, io::Error> {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0,0,0,0)), DHCP_PORT_SERVER);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
         let hostname = hostname::get_hostname();
 
         let message_builder = MessageBuilder::new(
             server_ip_address,
             hostname,
-
             subnet_mask,
             routers,
             domain_name_servers,
             static_routes,
         );
 
-        let storage = Database::new(
-            static_address_range,
-            dynamic_address_range,
-            storage,
-        );
+        let storage = Database::new(static_address_range, dynamic_address_range, storage);
 
         Ok(Server {
             socket,
@@ -133,15 +108,14 @@ impl Server {
 
         info!(
             "Injecting an ARP entry {} -> {}",
-            request.client_hardware_address,
-            response.your_ip_address,
+            request.client_hardware_address, response.your_ip_address,
         );
         match arp::add(
             request.client_hardware_address,
             response.your_ip_address,
             self.iface_name.to_owned(),
         ) {
-            Ok(Arp::Linux(_)) => {},
+            Ok(Arp::Linux(_)) => {}
             Ok(Arp::Windows(future)) => self.arp = Some(future),
             Err(error) => error!("ARP error: {:?}", error),
         }
@@ -217,10 +191,10 @@ impl Future for Server {
                             let destination = self.destination(&request, &response);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
-                        },
+                        }
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
-                },
+                }
                 MessageType::DhcpRequest => {
                     /*
                     RFC 2131 §4.3.2
@@ -258,14 +232,14 @@ impl Future for Server {
                                 let destination = self.destination(&request, &response);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
-                            },
+                            }
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.builder.dhcp_request_to_nak(&request, &error);
-                                let destination = Ipv4Addr::new(255,255,255,255);
+                                let destination = Ipv4Addr::new(255, 255, 255, 255);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
-                            },
+                            }
                         };
                         continue;
                     }
@@ -280,12 +254,13 @@ impl Future for Server {
                                 let destination = self.destination(&request, &response);
                                 log_send!(response, destination);
                                 start_send!(self.socket, destination, response);
-                            },
+                            }
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
                                 if let LeaseInvalid = error {
-                                    let response = self.builder.dhcp_request_to_nak(&request, &error);
-                                    let destination = Ipv4Addr::new(255,255,255,255);
+                                    let response =
+                                        self.builder.dhcp_request_to_nak(&request, &error);
+                                    let destination = Ipv4Addr::new(255, 255, 255, 255);
                                     log_send!(response, destination);
                                     start_send!(self.socket, destination, response);
                                 }
@@ -294,23 +269,25 @@ impl Future for Server {
                                 If the DHCP server has no record of this client, then it MUST
                                 remain silent, and MAY output a warning to the network administrator.
                                 */
-                            },
+                            }
                         }
                         continue;
                     }
 
                     // the client is in the RENEWING or REBINDING state
                     let lease_time = request.options.address_time;
-                    match self.database.renew(client_id, &request.client_ip_address, lease_time) {
+                    match self.database
+                        .renew(client_id, &request.client_ip_address, lease_time)
+                    {
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
                             let destination = self.destination(&request, &response);
                             log_send!(response, destination);
                             start_send!(self.socket, destination, response);
-                        },
+                        }
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
-                },
+                }
                 MessageType::DhcpDecline => {
                     /*
                     RFC 2131 §4.3.3
@@ -326,7 +303,7 @@ impl Future for Server {
                         Ok(_) => info!("Address {} has been marked as unavailable", address),
                         Err(error) => warn!("Address freezing error: {}", error.to_string()),
                     };
-                },
+                }
                 MessageType::DhcpRelease => {
                     /*
                     RFC 2131 §4.3.4
@@ -341,7 +318,7 @@ impl Future for Server {
                         Ok(_) => info!("Address {} has been released", address),
                         Err(error) => warn!("Address releasing error: {}", error.to_string()),
                     };
-                },
+                }
                 MessageType::DhcpInform => {
                     /*
                     RFC 2131 §4.3.5
@@ -351,13 +328,16 @@ impl Future for Server {
                     to the client and SHOULD NOT fill in 'yiaddr'.
                     */
 
-                    info!("Address {} has been taken by some client manually", request.client_ip_address);
+                    info!(
+                        "Address {} has been taken by some client manually",
+                        request.client_ip_address
+                    );
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
                     let destination = self.destination(&request, &response);
                     log_send!(response, destination);
                     start_send!(self.socket, destination, response);
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
     }

@@ -1,17 +1,10 @@
 //! The main DHCP socket module.
 
-use std::{
-    net::SocketAddr,
-};
+use std::net::SocketAddr;
 
-use tokio::{
-    io,
-    prelude::*,
-    net::UdpSocket,
-    reactor::Handle,
-};
 use futures::StartSend;
 use net2::UdpBuilder;
+use tokio::{io, net::UdpSocket, prelude::*, reactor::Handle};
 
 use dhcp_protocol::*;
 
@@ -25,13 +18,13 @@ const BUFFER_WRITE_CAPACITY: usize = 8192;
 /// Works with high level DHCP messages.
 pub struct DhcpFramed {
     /// `tokio::UdpSocket`.
-    socket      : UdpSocket,
+    socket: UdpSocket,
     /// Stores received data and is used for deserialization.
-    buf_read    : Vec<u8>,
+    buf_read: Vec<u8>,
     /// Stores pending data and is used for serialization.
-    buf_write   : Vec<u8>,
+    buf_write: Vec<u8>,
     /// Stores the destination address and the number of bytes to send.
-    pending     : Option<(SocketAddr, usize)>,
+    pending: Option<(SocketAddr, usize)>,
 }
 
 impl DhcpFramed {
@@ -42,7 +35,8 @@ impl DhcpFramed {
         if reuse_addr {
             socket.reuse_address(true)?;
         }
-        #[cfg(target_os = "linux")] {
+        #[cfg(target_os = "linux")]
+        {
             if reuse_port {
                 use net2::unix::UnixUdpBuilderExt;
                 socket.reuse_port(true)?;
@@ -124,7 +118,7 @@ impl Sink for DhcpFramed {
                         "Failed to write entire datagram to socket",
                     ));
                 }
-            },
+            }
         }
         self.pending = None;
 

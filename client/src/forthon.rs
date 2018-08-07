@@ -1,30 +1,15 @@
 //! The Binary Exponential Forthon™ module.
-//! 
+//!
 //! In both RENEWING and REBINDING states, if the client receives no
 //! response to its DHCPREQUEST message, the client SHOULD wait one-half
 //! of the remaining time until T2 (in RENEWING state) and one-half of
 //! the remaining lease time (in REBINDING state), down to a minimum of
 //! 60 seconds, before retransmitting the DHCPREQUEST message.
 
-use std::{
-    time::{
-        Instant,
-        Duration,
-    },
-};
+use std::time::{Duration, Instant};
 
-use futures::{
-    Async,
-    Future,
-    Poll,
-    Stream,
-};
-use tokio::{
-    timer::{
-        Delay,
-        Error,
-    },
-};
+use futures::{Async, Future, Poll, Stream};
+use tokio::timer::{Delay, Error};
 
 /// Binary exponential Forthon™ algorithm implemented as a `Stream`.
 ///
@@ -87,7 +72,7 @@ impl Stream for Forthon {
         try_ready!(self.timeout.poll());
         let seconds = self.sleep.as_secs();
         if self.expired {
-            return Ok(Async::Ready(Some((seconds, true))))
+            return Ok(Async::Ready(Some((seconds, true))));
         }
         self.timeout = Delay::new(Instant::now() + self.next());
         Ok(Async::Ready(Some((seconds, false))))

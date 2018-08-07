@@ -1,18 +1,7 @@
-use std::{
-    io,
-    process::Command,
-    net::{
-        Ipv4Addr,
-    },
-};
+use std::{io, net::Ipv4Addr, process::Command};
 
-use eui48::{
-    MacAddress,
-    MacAddressFormat,
-};
-use tokio_process::{
-    CommandExt,
-};
+use eui48::{MacAddress, MacAddressFormat};
+use tokio_process::CommandExt;
 
 use super::Arp;
 
@@ -28,13 +17,15 @@ impl From<io::Error> for Error {
 }
 
 pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp, Error> {
-    Ok(Arp::Windows(Command::new("netsh")
-        .arg("interface")
-        .arg("ip")
-        .arg("add")
-        .arg("neighbors")
-        .arg(iface)
-        .arg(ip.to_string())
-        .arg(hwaddr.to_string(MacAddressFormat::Canonical))
-        .output_async()))
+    Ok(Arp::Windows(
+        Command::new("netsh")
+            .arg("interface")
+            .arg("ip")
+            .arg("add")
+            .arg("neighbors")
+            .arg(iface)
+            .arg(ip.to_string())
+            .arg(hwaddr.to_string(MacAddressFormat::Canonical))
+            .output_async(),
+    ))
 }

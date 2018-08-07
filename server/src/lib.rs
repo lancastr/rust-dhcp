@@ -1,29 +1,28 @@
 //! The original Rust DHCP server implementation.
 
-#[macro_use] mod macros;
-mod server;
+#[macro_use]
+mod macros;
 mod builder;
 mod database;
+mod lease;
+mod server;
 mod storage;
 mod storage_ram;
-mod lease;
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
+extern crate bytes;
+extern crate chrono;
+extern crate eui48;
+extern crate futures;
+extern crate hostname;
 extern crate tokio;
 extern crate tokio_process;
-extern crate futures;
-extern crate bytes;
-extern crate eui48;
-extern crate hostname;
-extern crate chrono;
-#[macro_use] extern crate failure;
+#[macro_use]
+extern crate failure;
 
-extern crate dhcp_protocol;
-extern crate dhcp_framed;
 extern crate dhcp_arp;
+extern crate dhcp_framed;
+extern crate dhcp_protocol;
 
-pub use self::{
-    dhcp_server::Server,
-    storage::Storage,
-    storage_ram::RamStorage,
-};
+pub use self::{dhcp_server::Server, storage::Storage, storage_ram::RamStorage};

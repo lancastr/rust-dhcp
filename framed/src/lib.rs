@@ -4,7 +4,8 @@
 mod socket;
 
 extern crate tokio;
-#[macro_use] extern crate futures;
+#[macro_use]
+extern crate futures;
 extern crate net2;
 
 extern crate dhcp_protocol;
