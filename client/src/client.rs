@@ -46,19 +46,24 @@ pub enum Command {
     },
 }
 
-type DhcpStream = Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync;
-type DhcpSink = Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync;
-
 /// The struct implementing the `Future` trait.
-pub struct Client {
-    stream: Box<DhcpStream>,
-    sink: Box<DhcpSink>,
+pub struct Client<I, O>
+where
+    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+{
+    stream: I,
+    sink: O,
     builder: MessageBuilder,
     state: State,
     options: RequestOptions,
 }
 
-impl Client {
+impl<I, O> Client<I, O>
+where
+    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+{
     /// Creates a client future.
     ///
     /// * `stream`
@@ -103,8 +108,8 @@ impl Client {
     /// The server may lease the address for different amount time if it decides so.
     ///
     pub fn new(
-        stream: Box<DhcpStream>,
-        sink: Box<DhcpSink>,
+        stream: I,
+        sink: O,
         client_hardware_address: MacAddress,
         client_id: Option<Vec<u8>>,
         hostname: Option<String>,
@@ -179,7 +184,11 @@ impl Client {
     }
 }
 
-impl Stream for Client {
+impl<I, O> Stream for Client<I, O>
+where
+    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+{
     type Item = Configuration;
     type Error = io::Error;
 
@@ -591,7 +600,11 @@ impl Stream for Client {
     }
 }
 
-impl Sink for Client {
+impl<I, O> Sink for Client<I, O>
+where
+    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+{
     type SinkItem = Command;
     type SinkError = io::Error;
 

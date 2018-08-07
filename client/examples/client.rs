@@ -15,20 +15,26 @@ extern crate dhcp_framed;
 extern crate dhcp_protocol;
 
 use std::{
-    io,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    io, net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 use eui48::MacAddress;
 use tokio::prelude::*;
 
-use client::{Client, Command};
+use dhcp_client::{Client, Command};
 use dhcp_framed::DhcpFramed;
-use dhcp_protocol::DHCP_PORT_CLIENT;
+use dhcp_protocol::{Message, DHCP_PORT_CLIENT};
 
-struct SuperClient(Client, u64);
+struct SuperClient<I, O>(Client<I, O>, u64)
+where
+    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync;
 
-impl Future for SuperClient {
+impl<I, O> Future for SuperClient<I, O>
+where
+    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+{
     type Item = ();
     type Error = io::Error;
 
@@ -76,8 +82,8 @@ fn main() {
 
     let client = SuperClient(
         Client::new(
-            Box::new(stream),
-            Box::new(sink),
+            stream,
+            sink,
             MacAddress::new([0x00, 0x0c, 0x29, 0x56, 0xab, 0xcc]),
             None,
             None,
