@@ -106,18 +106,21 @@ impl Server {
             return Ipv4Addr::new(255, 255, 255, 255);
         }
 
-        info!(
-            "Injecting an ARP entry {} -> {}",
-            request.client_hardware_address, response.your_ip_address,
-        );
-        match dhcp_arp::add(
-            request.client_hardware_address,
-            response.your_ip_address,
-            self.iface_name.to_owned(),
-        ) {
-            Ok(Arp::Linux(_)) => {}
-            Ok(Arp::Windows(future)) => self.arp = Some(future),
-            Err(error) => error!("ARP error: {:?}", error),
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            info!(
+                "Injecting an ARP entry {} -> {}",
+                request.client_hardware_address, response.your_ip_address,
+            );
+            match dhcp_arp::add(
+                request.client_hardware_address,
+                response.your_ip_address,
+                self.iface_name.to_owned(),
+            ) {
+                Ok(Arp::Linux(_)) => {}
+                Ok(Arp::Windows(future)) => self.arp = Some(future),
+                Err(error) => error!("ARP error: {:?}", error),
+            }
         }
 
         /*
