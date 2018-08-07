@@ -17,7 +17,7 @@ use tokio::timer::Delay;
 use chrono::prelude::*;
 use rand;
 
-use protocol::DHCP_PORT_SERVER;
+use dhcp_protocol::DHCP_PORT_SERVER;
 
 use backoff::Backoff;
 use forthon::Forthon;

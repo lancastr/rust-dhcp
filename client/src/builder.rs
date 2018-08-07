@@ -11,7 +11,7 @@ use eui48::{
     EUI48LEN,
 };
 
-use protocol::*;
+use dhcp_protocol::*;
 
 /// Builds common client messages with some parameters.
 pub struct MessageBuilder {

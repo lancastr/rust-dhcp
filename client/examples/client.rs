@@ -8,9 +8,9 @@ extern crate eui48;
 extern crate rand;
 extern crate env_logger;
 
-extern crate client;
-extern crate framed;
-extern crate protocol;
+extern crate dhcp_client;
+extern crate dhcp_framed;
+extern crate dhcp_protocol;
 
 use std::{
     io,
@@ -28,8 +28,8 @@ use client::{
     Client,
     Command,
 };
-use framed::DhcpFramed;
-use protocol::DHCP_PORT_CLIENT;
+use dhcp_framed::DhcpFramed;
+use dhcp_protocol::DHCP_PORT_CLIENT;
 
 struct SuperClient(Client, u64);
 

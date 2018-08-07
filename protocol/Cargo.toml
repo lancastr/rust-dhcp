@@ -1,5 +1,5 @@
 [package]
-name = "protocol"
+name = "dhcp-protocol"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
 

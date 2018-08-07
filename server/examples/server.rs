@@ -5,14 +5,14 @@
 extern crate tokio;
 extern crate env_logger;
 
-extern crate server;
-extern crate protocol;
+extern crate dhcp_server;
+extern crate dhcp_protocol;
 
 use std::net::Ipv4Addr;
 
 use tokio::prelude::Future;
 
-use protocol::DHCP_PORT_SERVER;
+use dhcp_protocol::DHCP_PORT_SERVER;
 
 fn main() {
     std::env::set_var("RUST_BACKTRACE", "1");

@@ -15,14 +15,14 @@ use tokio::{
 use tokio_process::OutputAsync;
 use hostname;
 
-use framed::DhcpFramed;
-use protocol::{
+use dhcp_framed::DhcpFramed;
+use dhcp_protocol::{
     Message,
     MessageType,
     DHCP_PORT_SERVER,
     DHCP_PORT_CLIENT,
 };
-use arp::{
+use dhcp_arp::{
     self,
     Arp,
 };

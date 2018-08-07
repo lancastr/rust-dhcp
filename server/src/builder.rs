@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use protocol::*;
+use dhcp_protocol::*;
 
 use database::{
     Offer,

@@ -1,5 +1,5 @@
 [package]
-name = "framed"
+name = "dhcp-framed"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
 
@@ -7,4 +7,4 @@ authors = ["hedgar <hedgar2017@gmail.com>"]
 tokio = "0.1.7"
 futures = "0.1.21"
 net2 = "0.2.33"
-protocol = { path = "../protocol" }
+dhcp-protocol = { path = "../protocol" }

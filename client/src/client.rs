@@ -16,7 +16,7 @@ use futures::StartSend;
 use eui48::MacAddress;
 use hostname;
 
-use protocol::{
+use dhcp_protocol::{
     Message,
     MessageType,
     DHCP_PORT_SERVER,

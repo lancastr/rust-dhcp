@@ -1,6 +1,6 @@
 //! Macro functions used in the `Server:poll` method.
 
-/// The passed `Option` must be already validated in `protocol::Message::validate` method.
+/// The passed `Option` must be already validated in `dhcp_protocol::Message::validate` method.
 macro_rules! expect (
     ($option:expr) => (
         $option.expect("A bug in DHCP message validation")

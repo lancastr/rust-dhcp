@@ -16,8 +16,8 @@ extern crate chrono;
 extern crate hostname;
 extern crate rand;
 
-extern crate protocol;
-extern crate framed;
+extern crate dhcp_protocol;
+extern crate dhcp_framed;
 
 pub use self::{
     client::{

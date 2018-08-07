@@ -13,7 +13,7 @@ use tokio::{
 use futures::StartSend;
 use net2::UdpBuilder;
 
-use protocol::*;
+use dhcp_protocol::*;
 
 /// Must be enough to decode all the options.
 const BUFFER_READ_CAPACITY: usize = 8192;

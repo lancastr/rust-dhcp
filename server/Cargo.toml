@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "dhcp-server"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
 
@@ -13,9 +13,9 @@ eui48 = "0.3.2"
 hostname = "0.1.5"
 chrono = "0.4.4"
 failure = "0.1.1"
-protocol = { path = "../protocol" }
-framed = { path = "../framed" }
-arp = { path = "../arp" }
+dhcp-protocol = { path = "../protocol" }
+dhcp-framed = { path = "../framed" }
+dhcp-arp = { path = "../arp" }
 
 [dev-dependencies]
 env_logger = "0.5.10"

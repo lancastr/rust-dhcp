@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "dhcp-client"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
 
@@ -12,8 +12,8 @@ eui48 = "0.3.2"
 chrono = "0.4.4"
 hostname = "0.1.5"
 rand = "0.5.3"
-protocol = { path = "../protocol" }
-framed = { path = "../framed" }
+dhcp-protocol = { path = "../protocol" }
+dhcp-framed = { path = "../framed" }
 
 [dev-dependencies]
 env_logger = "0.5.10"

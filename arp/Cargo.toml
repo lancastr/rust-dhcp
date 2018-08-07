@@ -1,5 +1,5 @@
 [package]
-name = "arp"
+name = "dhcp-arp"
 version = "0.1.0"
 authors = ["hedgar"]
 
@@ -8,5 +8,5 @@ eui48 = "0.3.2"
 tokio-process = "0.2.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libc = { git = "https://github.com/rust-lang/libc.git" }
-nix = { git = "https://github.com/nix-rust/nix.git" }
+libc = "0.2.43"
+nix = "0.11.0"

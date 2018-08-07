@@ -18,12 +18,12 @@ extern crate hostname;
 extern crate chrono;
 #[macro_use] extern crate failure;
 
-extern crate protocol;
-extern crate framed;
-extern crate arp;
+extern crate dhcp_protocol;
+extern crate dhcp_framed;
+extern crate dhcp_arp;
 
 pub use self::{
-    server::Server,
+    dhcp_server::Server,
     storage::Storage,
     storage_ram::RamStorage,
 };

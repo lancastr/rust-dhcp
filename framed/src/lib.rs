@@ -7,6 +7,6 @@ extern crate tokio;
 #[macro_use] extern crate futures;
 extern crate net2;
 
-extern crate protocol;
+extern crate dhcp_protocol;
 
 pub use socket::DhcpFramed;
