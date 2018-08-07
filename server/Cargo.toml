@@ -15,6 +15,11 @@ chrono = "0.4.4"
 failure = "0.1.1"
 dhcp-protocol = { path = "../protocol" }
 dhcp-framed = { path = "../framed" }
+
+[target.'cfg(any(target_os="freebsd", target_os="macos"))'.dependencies]
+dhcp-bpf = { path = "../bpf" }
+
+[target.'cfg(any(target_os="linux", target_os="windows"))'.dependencies]
 dhcp-arp = { path = "../arp" }
 
 [dev-dependencies]

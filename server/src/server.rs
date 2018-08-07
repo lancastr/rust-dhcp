@@ -6,7 +6,9 @@ use hostname;
 use tokio::{io, prelude::*};
 use tokio_process::OutputAsync;
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use dhcp_arp::{self, Arp};
+
 use dhcp_framed::DhcpFramed;
 use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 
