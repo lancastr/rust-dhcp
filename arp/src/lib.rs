@@ -4,9 +4,6 @@ mod os;
 #[cfg(target_os = "windows")]
 #[path = "windows.rs"]
 mod os;
-#[cfg(target_os = "freebsd")]
-#[path = "freebsd.rs"]
-mod os;
 
 extern crate eui48;
 extern crate tokio_process;
