@@ -27,6 +27,7 @@ pub struct Server {
     iface_name: String,
     builder: MessageBuilder,
     database: Database,
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     arp: Option<OutputAsync>,
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     cpu_pool: CpuPool,
@@ -109,7 +110,7 @@ impl Server {
 
     /// Chooses the destination IP according to RFC 2131 rules.
     ///
-    /// Performs the ARP query in hardware unicast cases and sets the `arp_future` field
+    /// Performs the ARP query in hardware unicast cases and sets the `arp` field
     /// if ARP processing is expected to be too long for the tokio reactor.
     fn destination(&mut self, request: &Message, response: &Message) -> Ipv4Addr {
         if !request.client_ip_address.is_unspecified() {
@@ -158,7 +159,10 @@ impl Future for Server {
     /// Works infinite time.
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            poll_arp!(self.arp);
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                poll_arp!(self.arp);
+            }
             poll_complete!(self.socket);
             let (addr, request) = poll!(self.socket);
             log_receive!(request, addr);

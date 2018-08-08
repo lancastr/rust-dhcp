@@ -17,27 +17,27 @@ use dhcp_protocol::DHCP_PORT_SERVER;
 
 fn main() {
     std::env::set_var("RUST_BACKTRACE", "1");
-    std::env::set_var("RUST_LOG", "dhcp_server=trace");
+    std::env::set_var("RUST_LOG", "server=trace,dhcp_server=trace");
     env_logger::init();
 
-    let server_ip_address = Ipv4Addr::new(192, 168, 88, 1);
-    let iface_name = "vboxnet9".to_string();
+    let server_ip_address = Ipv4Addr::new(192, 168, 0, 2);
+    let iface_name = "Ethernet".to_string();
 
     let server = dhcp_server::Server::new(
         server_ip_address,
         iface_name,
         (
-            Ipv4Addr::new(192, 168, 88, 50),
-            Ipv4Addr::new(192, 168, 88, 99),
+            Ipv4Addr::new(192, 168, 0, 50),
+            Ipv4Addr::new(192, 168, 0, 99),
         ),
         (
-            Ipv4Addr::new(192, 168, 88, 100),
-            Ipv4Addr::new(192, 168, 88, 199),
+            Ipv4Addr::new(192, 168, 0, 100),
+            Ipv4Addr::new(192, 168, 0, 199),
         ),
         Box::new(dhcp_server::RamStorage::new()),
         Ipv4Addr::new(255, 255, 0, 0),
-        vec![Ipv4Addr::new(192, 168, 88, 1)],
-        vec![Ipv4Addr::new(192, 168, 88, 1)],
+        vec![Ipv4Addr::new(192, 168, 0, 1)],
+        vec![Ipv4Addr::new(192, 168, 0, 1)],
         vec![],
     ).expect("Server creating error");
 

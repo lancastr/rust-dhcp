@@ -65,7 +65,7 @@ where
 
 fn main() {
     std::env::set_var("RUST_BACKTRACE", "1");
-    std::env::set_var("RUST_LOG", "client=info");
+    std::env::set_var("RUST_LOG", "client=trace,dhcp_client=trace");
     env_logger::init();
 
     let (sink, stream) = DhcpFramed::new(
@@ -75,16 +75,16 @@ fn main() {
     ).expect("Socket binding error")
         .split();
 
-    let server_address = Some(Ipv4Addr::new(192, 168, 0, 4));
-    let client_address = None;
+    let server_address = Some(Ipv4Addr::new(192,168,0,1));
+    let client_address = Some(Ipv4Addr::new(192,168,0,2));
     let address_request = None;
-    let address_time = Some(60);
+    let address_time = None;
 
     let client = SuperClient(
         Client::new(
             stream,
             sink,
-            MacAddress::new([0x00, 0x0c, 0x29, 0x56, 0xab, 0xcc]),
+            MacAddress::new([0x4c, 0xcc, 0x6a, 0xbc, 0x87, 0x9d]),
             None,
             None,
             server_address,

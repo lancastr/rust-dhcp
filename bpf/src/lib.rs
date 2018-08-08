@@ -16,6 +16,7 @@ pub type caddr_t = *mut libc::c_char;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
+#[allow(non_camel_case_types)]
 pub struct ifmap {
     pub mem_start: libc::c_ulong,
     pub mem_end: libc::c_ulong,
@@ -27,6 +28,7 @@ pub struct ifmap {
 
 #[derive(Copy, Clone)]
 #[repr(C)]
+#[allow(non_camel_case_types)]
 pub struct ifreq_buffer {
     pub length: libc::size_t,
     pub buffer: *mut libc::c_void,
@@ -35,6 +37,7 @@ pub struct ifreq_buffer {
 #[cfg(any(target_os = "macos"))]
 #[derive(Copy, Clone)]
 #[repr(C)]
+#[allow(non_camel_case_types)]
 pub union ifreq_inner {
     pub ifru_addr: libc::sockaddr,
     pub ifru_dstaddr: libc::sockaddr,
@@ -50,6 +53,7 @@ pub union ifreq_inner {
 #[cfg(any(target_os = "freebsd"))]
 #[derive(Copy, Clone)]
 #[repr(C)]
+#[allow(non_camel_case_types)]
 pub union ifreq_inner {
     pub ifru_addr: libc::sockaddr,
     pub ifru_dstaddr: libc::sockaddr,
@@ -70,6 +74,7 @@ pub union ifreq_inner {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+#[allow(non_camel_case_types)]
 pub struct ifreq {
     pub ifr_name: [u8; libc::IFNAMSIZ],
     pub inner: ifreq_inner,

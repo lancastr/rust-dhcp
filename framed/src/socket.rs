@@ -60,20 +60,17 @@ impl Stream for DhcpFramed {
     type Item = (SocketAddr, Message);
     type Error = io::Error;
 
-    /// Returns `Ok(Async::Ready(_))` on successful
+    /// Returns `Ok(Async::Ready(Some(_)))` on successful
     /// both read from socket and decoding the message.
+    /// Returns `Ok(Async::Ready(None))` a on parsing error.
     ///
     /// # Errors
     /// `io::Error` on a socket error.
-    /// `io::Error` on a packet decoding error.
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         let (amount, addr) = try_ready!(self.socket.poll_recv_from(&mut self.buf_read));
         match Message::from_bytes(&self.buf_read[..amount]) {
             Ok(frame) => Ok(Async::Ready(Some((addr, frame)))),
-            Err(error) => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Invalid packet from {}: {}", addr, error),
-            )),
+            Err(_) => Ok(Async::Ready(None)),
         }
     }
 }

@@ -94,18 +94,18 @@ where
     /// The previous client address.
     /// Set it if you want to reacquire your previous network address.
     /// If set, the client is started in INIT-REBOOT state.
-    /// If not set, the client is started in INIT state.
+    /// If unset, the client is started in INIT state.
     ///
     /// * `address_request`
     /// The requested network address.
-    /// Set it if you want to requested a static network address.
+    /// Set it if you want to request a specific network address.
     /// If not set, the server will give you either
     /// your current or previous address, or an address from its dynamic pool.
     ///
     /// * `address_time`
     /// The requested lease time.
     /// If not set, the server will determine the lease time by itself.
-    /// The server may lease the address for different amount time if it decides so.
+    /// The server may lease the address for different amount of time if it decides so.
     ///
     pub fn new(
         stream: I,
@@ -276,7 +276,11 @@ where
                     }
 
                     let (addr, response) = match self.stream.poll() {
-                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::Ready(Some(data))) => data,
+                        Ok(Async::Ready(None)) => {
+                            warn!("Received an invalid packet");
+                            continue;
+                        },
                         Ok(Async::NotReady) => {
                             poll_backoff!(self.state.timer_offer);
                             self.state.set_discover_sent(false);
@@ -320,7 +324,11 @@ where
                     }
 
                     let (addr, response) = match self.stream.poll() {
-                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::Ready(Some(data))) => data,
+                        Ok(Async::Ready(None)) => {
+                            warn!("Received an invalid packet");
+                            continue;
+                        },
                         Ok(Async::NotReady) => {
                             if let DhcpState::Init = poll_backoff!(
                                 self.state.timer_ack,
@@ -402,7 +410,11 @@ where
                     }
 
                     let (addr, response) = match self.stream.poll() {
-                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::Ready(Some(data))) => data,
+                        Ok(Async::Ready(None)) => {
+                            warn!("Received an invalid packet");
+                            continue;
+                        },
                         Ok(Async::NotReady) => {
                             if let DhcpState::Init = poll_backoff!(
                                 self.state.timer_ack,
@@ -492,7 +504,11 @@ where
                     }
 
                     let (addr, response) = match self.stream.poll() {
-                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::Ready(Some(data))) => data,
+                        Ok(Async::Ready(None)) => {
+                            warn!("Received an invalid packet");
+                            continue;
+                        },
                         Ok(Async::NotReady) => {
                             if let DhcpState::Rebinding = poll_forthon!(
                                 self.state.timer_rebinding,
@@ -556,7 +572,11 @@ where
                     }
 
                     let (addr, response) = match self.stream.poll() {
-                        Ok(Async::Ready(data)) => expect!(data),
+                        Ok(Async::Ready(Some(data))) => data,
+                        Ok(Async::Ready(None)) => {
+                            warn!("Received an invalid packet");
+                            continue;
+                        },
                         Ok(Async::NotReady) => {
                             if let DhcpState::Init = poll_forthon!(
                                 self.state.timer_expiration,
@@ -608,7 +628,7 @@ where
     type SinkItem = Command;
     type SinkError = io::Error;
 
-    /// Translates a `Command` into a DHCP message and sends to the user provided `Sink`.
+    /// Translates a `Command` into a DHCP message and sends it to the user provided `Sink`.
     fn start_send(
         &mut self,
         command: Self::SinkItem,

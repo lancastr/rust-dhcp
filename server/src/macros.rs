@@ -27,11 +27,15 @@ macro_rules! log_send(
 macro_rules! poll (
     ($socket:expr) => (
         match $socket.poll() {
-            Ok(Async::Ready(data)) => expect!(data),
+            Ok(Async::Ready(Some(data))) => data,
+            Ok(Async::Ready(None)) => {
+                warn!("Received an invalid packet");
+                continue;
+            }
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(error) => {
-                warn!("Unable to parse a packet: {}", error);
-                continue;
+                warn!("Socket error: {}", error);
+                return Err(error);
             },
         };
     );
@@ -59,17 +63,17 @@ macro_rules! start_send (
 
         #[cfg(any(target_os = "freebsd", target_os = "macos"))]
         {
-            println!("Sending to {:?} response!", destination);
+            info!("Sending to {:?} response!", destination);
             if let IpAddr::V4(ipv4) = destination.ip() {
                 if ipv4.is_broadcast() {
-                    println!("Broadcast response!");
+                    info!("Broadcast response!");
                     let mut bpf = $self.bpf.clone();
                     $self.cpu_pool.clone().spawn_fn(move || {
                         let packet = vec![0u8; 512];
                         if let Err(e) = bpf.write_all(&packet) {
                             error!("Could not send broadcast response through bpf: {:?}", e);
                         };
-                        println!("BPF sent!");
+                        info!("BPF sent!");
 
                         Ok::<(),()>(())
                     }).forget();
@@ -87,7 +91,7 @@ macro_rules! start_send (
                 },
                 Err(error) => {
                     warn!("Socket error: {}", error);
-                    continue;
+                    return Err(error);
                 },
             }
         }
@@ -97,9 +101,13 @@ macro_rules! start_send (
 /// Just to move some code from the overwhelmed `poll` method.
 macro_rules! poll_arp (
     ($process:expr) => (
+        let mut ready = false;
         if let Some(ref mut process) = $process {
             let output = match process.poll() {
-                Ok(Async::Ready(output)) => output,
+                Ok(Async::Ready(output)) => {
+                    ready = true;
+                    output
+                },
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Err(error) => {
                     warn!("ARP process future error: {}", error);
@@ -113,7 +121,9 @@ macro_rules! poll_arp (
                 }
             }
         }
-        $process = None;
+        if ready {
+            $process = None;
+        }
     );
 );
 
@@ -125,7 +135,7 @@ macro_rules! poll_complete (
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(error) => {
                 warn!("Socket error: {}", error);
-                continue;
+                return Err(error);
             },
         }
     );
