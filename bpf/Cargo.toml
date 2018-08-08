@@ -6,3 +6,4 @@ authors = ["hedgar"]
 [dependencies]
 libc = "^0.2"
 nix = "0.11.0"
+ifstructs = "0.1.1"
