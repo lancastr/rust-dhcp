@@ -4,20 +4,22 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use hostname;
 use tokio::{io, prelude::*};
-use tokio_process::OutputAsync;
-
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use dhcp_arp::{self, Arp};
+use tokio_process::OutputAsync;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use futures_cpupool::CpuPool;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use eui48::{MacAddress, EUI48LEN};
 
 use dhcp_framed::DhcpFramed;
 use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+use dhcp_arp::{self, Arp};
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use dhcp_bpf::Bpf;
 
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use dhcp_bpf::Bpf;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use futures_cpupool::CpuPool;
 use storage::Storage;
 
 /// The struct implementing the `Future` trait.
@@ -104,6 +106,7 @@ impl Server {
             server_ip_address,
             builder: message_builder,
             database: storage,
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             arp: None,
         })
     }
@@ -111,14 +114,15 @@ impl Server {
     /// Chooses the destination IP according to RFC 2131 rules.
     ///
     /// Performs the ARP query in hardware unicast cases and sets the `arp` field
-    /// if ARP processing is expected to be too long for the tokio reactor.
-    fn destination(&mut self, request: &Message, response: &Message) -> Ipv4Addr {
+    /// if ARP processing is expected to be too long for the tokio reactor.    ///
+    /// The bool flag is `true` if hardware unicast is required.
+    fn destination(&mut self, request: &Message, response: &Message) -> (Ipv4Addr, bool) {
         if !request.client_ip_address.is_unspecified() {
-            return request.client_ip_address;
+            return (request.client_ip_address, false);
         }
 
         if request.is_broadcast {
-            return Ipv4Addr::new(255, 255, 255, 255);
+            return (Ipv4Addr::new(255, 255, 255, 255), false);
         }
 
         #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -138,6 +142,8 @@ impl Server {
             }
         }
 
+        (response.your_ip_address, true)
+
         /*
         RFC 2131 §4.1
         If unicasting is not possible, the message
@@ -147,8 +153,74 @@ impl Server {
 
         Note: I don't know yet when unicasting is not possible.
         */
+    }
 
-        response.your_ip_address
+    /// Sends a response using OS-specific features.
+    #[allow(unused)]
+    fn send(&mut self, response: Message, destination: Ipv4Addr, hw_unicast: bool) -> io::Result<()> {
+        log_send!(response, destination);
+
+        #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+        {
+            if hw_unicast {
+                const BPF_PACKET_BUFFER_SIZE: usize = 8192;
+
+                trace!("Sending to {} via BPF", destination);
+                let mut payload = vec![0u8; BPF_PACKET_BUFFER_SIZE];
+                let amount = response.to_bytes(payload.as_mut())?;
+
+                let packet = Self::ethernet_packet(
+                    MacAddress::new([0x08,0x00,0x27,0x26,0xdc,0x79]),
+                    response.client_hardware_address.to_owned(),
+                    self.server_ip_address.to_owned(),
+                    destination.to_owned(),
+                    &payload[..amount],
+                )?;
+                let mut bpf = self.bpf.clone();
+                self.cpu_pool.clone().spawn_fn(move || {
+                    if let Err(error) = bpf.write_all(&packet) {
+                        error!("BPF sending error: {}", error);
+                    } else {
+                        trace!("Response has been sent via BPF");
+                    }
+                    Ok::<(),()>(())
+                }).forget();
+                return Ok(());
+            }
+        }
+
+        let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_CLIENT);
+        start_send!(self.socket, destination, response);
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    fn ethernet_packet(
+        src_mac: MacAddress,
+        dst_mac: MacAddress,
+        src_ip: Ipv4Addr,
+        dst_ip: Ipv4Addr,
+        payload: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        use etherparse::{PacketBuilder, WriteError};
+        const BPF_IP_TTL: u8 = 64;
+
+        let builder = PacketBuilder::ethernet2(
+            *array_ref!(src_mac.as_bytes(), 0, EUI48LEN),
+            *array_ref!(dst_mac.as_bytes(), 0, EUI48LEN),
+        )
+            .ipv4(src_ip.octets(), dst_ip.octets(), BPF_IP_TTL)
+            .udp(DHCP_PORT_SERVER, DHCP_PORT_CLIENT);
+
+        let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
+        match builder.write(&mut result, payload) {
+            Ok(_) => Ok(result),
+            Err(WriteError::IoError(error)) => Err(error),
+            Err(WriteError::ValueError(error)) => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("{:?}", error),
+            )),
+        }
     }
 }
 
@@ -209,9 +281,8 @@ impl Future for Server {
                     ) {
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
-                            let destination = self.destination(&request, &response);
-                            log_send!(response, destination);
-                            start_send!(self, self.socket, destination, response);
+                            let (destination, hw_unicast) = self.destination(&request, &response);
+                            self.send(response, destination, hw_unicast)?;
                         }
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
@@ -250,16 +321,14 @@ impl Future for Server {
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let destination = self.destination(&request, &response);
-                                log_send!(response, destination);
-                                start_send!(self, self.socket, destination, response);
+                                let (destination, hw_unicast) = self.destination(&request, &response);
+                                self.send(response, destination, hw_unicast)?;
                             }
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.builder.dhcp_request_to_nak(&request, &error);
                                 let destination = Ipv4Addr::new(255, 255, 255, 255);
-                                log_send!(response, destination);
-                                start_send!(self, self.socket, destination, response);
+                                self.send(response, destination, false)?;
                             }
                         };
                         continue;
@@ -272,9 +341,8 @@ impl Future for Server {
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let destination = self.destination(&request, &response);
-                                log_send!(response, destination);
-                                start_send!(self, self.socket, destination, response);
+                                let (destination, hw_unicast) = self.destination(&request, &response);
+                                self.send(response, destination, hw_unicast)?;
                             }
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
@@ -282,8 +350,7 @@ impl Future for Server {
                                     let response =
                                         self.builder.dhcp_request_to_nak(&request, &error);
                                     let destination = Ipv4Addr::new(255, 255, 255, 255);
-                                    log_send!(response, destination);
-                                    start_send!(self, self.socket, destination, response);
+                                    self.send(response, destination, false)?;
                                 }
                                 /*
                                 RFC 2131 §4.3.2
@@ -302,9 +369,8 @@ impl Future for Server {
                     {
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                            let destination = self.destination(&request, &response);
-                            log_send!(response, destination);
-                            start_send!(self, self.socket, destination, response);
+                            let (destination, hw_unicast) = self.destination(&request, &response);
+                            self.send(response, destination, hw_unicast)?;
                         }
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
@@ -354,9 +420,8 @@ impl Future for Server {
                         request.client_ip_address
                     );
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
-                    let destination = self.destination(&request, &response);
-                    log_send!(response, destination);
-                    start_send!(self, self.socket, destination, response);
+                    let (destination, hw_unicast) = self.destination(&request, &response);
+                    self.send(response, destination, hw_unicast)?;
                 }
                 _ => {}
             }

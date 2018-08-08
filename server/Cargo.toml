@@ -6,10 +6,8 @@ authors = ["hedgar <hedgar2017@gmail.com>"]
 [dependencies]
 log = "0.4.3"
 tokio = "0.1.7"
-tokio-process = "0.2.2"
 futures = "0.1.21"
 bytes = "0.4.8"
-eui48 = "0.3.2"
 hostname = "0.1.5"
 chrono = "0.4.4"
 failure = "0.1.1"
@@ -17,10 +15,14 @@ dhcp-protocol = { path = "../protocol" }
 dhcp-framed = { path = "../framed" }
 
 [target.'cfg(any(target_os="freebsd", target_os="macos"))'.dependencies]
-dhcp-bpf = { path = "../bpf" }
 futures-cpupool = "0.1.8"
+eui48 = "0.3.2"
+etherparse = "0.5.0"
+arrayref = "0.3.4"
+dhcp-bpf = { path = "../bpf" }
 
 [target.'cfg(any(target_os="linux", target_os="windows"))'.dependencies]
+tokio-process = "0.2.2"
 dhcp-arp = { path = "../arp" }
 
 [dev-dependencies]

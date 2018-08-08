@@ -10,6 +10,7 @@ use super::{constants::*, options::OptionTag, Message};
 macro_rules! check_remaining(
     ($cursor:expr, $distance:expr) => (
         if $cursor.remaining() < $distance {
+            println!("{} < {}", $cursor.remaining(), $distance);
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Buffer is too small"));
         }
     )

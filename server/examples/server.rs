@@ -16,7 +16,7 @@ use tokio::prelude::Future;
 use dhcp_protocol::DHCP_PORT_SERVER;
 
 fn main() {
-    std::env::set_var("RUST_BACKTRACE", "1");
+    std::env::set_var("RUST_BACKTRACE", "full");
     std::env::set_var("RUST_LOG", "server=trace,dhcp_server=trace");
     env_logger::init();
 

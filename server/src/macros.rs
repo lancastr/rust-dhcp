@@ -56,49 +56,36 @@ macro_rules! validate (
 
 /// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send (
-    ($self:expr, $socket:expr, $destination:expr, $message:expr) => (
-        let destination = SocketAddr::new(IpAddr::V4($destination), DHCP_PORT_CLIENT);
-
-        let mut processed = false;
-
-        #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-        {
-            info!("Sending to {:?} response!", destination);
-            if let IpAddr::V4(ipv4) = destination.ip() {
-                if ipv4.is_broadcast() {
-                    info!("Broadcast response!");
-                    let mut bpf = $self.bpf.clone();
-                    $self.cpu_pool.clone().spawn_fn(move || {
-                        let packet = vec![0u8; 512];
-                        if let Err(e) = bpf.write_all(&packet) {
-                            error!("Could not send broadcast response through bpf: {:?}", e);
-                        };
-                        info!("BPF sent!");
-
-                        Ok::<(),()>(())
-                    }).forget();
-
-                    processed = true;
-                }
-            }
-        }
-
-        if !processed {
-            match $socket.start_send((destination, $message)) {
-                Ok(AsyncSink::Ready) => {},
-                Ok(AsyncSink::NotReady(_)) => {
-                    panic!("Must wait for poll_complete first");
-                },
-                Err(error) => {
-                    warn!("Socket error: {}", error);
-                    return Err(error);
-                },
-            }
+    ($socket:expr, $destination:expr, $message:expr) => (
+        match $socket.start_send(($destination, $message)) {
+            Ok(AsyncSink::Ready) => {},
+            Ok(AsyncSink::NotReady(_)) => {
+                panic!("Must wait for poll_complete first");
+            },
+            Err(error) => {
+                warn!("Socket error: {}", error);
+                return Err(error);
+            },
         }
     );
 );
 
 /// Just to move some code from the overwhelmed `poll` method.
+macro_rules! poll_complete (
+    ($socket:expr) => (
+        match $socket.poll_complete() {
+            Ok(Async::Ready(_)) => {},
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(error) => {
+                warn!("Socket error: {}", error);
+                return Err(error);
+            },
+        }
+    );
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 macro_rules! poll_arp (
     ($process:expr) => (
         let mut ready = false;
@@ -123,20 +110,6 @@ macro_rules! poll_arp (
         }
         if ready {
             $process = None;
-        }
-    );
-);
-
-/// Just to move some code from the overwhelmed `poll` method.
-macro_rules! poll_complete (
-    ($socket:expr) => (
-        match $socket.poll_complete() {
-            Ok(Async::Ready(_)) => {},
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Err(error) => {
-                warn!("Socket error: {}", error);
-                return Err(error);
-            },
         }
     );
 );
