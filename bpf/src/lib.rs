@@ -1,4 +1,4 @@
-extern crate ifreq as _ifreq;
+extern crate ifstructs;
 extern crate libc;
 #[macro_use]
 extern crate nix;
@@ -9,7 +9,7 @@ use std::io;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
-use _ifreq::ifreq;
+use ifstructs::ifreq;
 
 pub struct Bpf {
     iface: String,

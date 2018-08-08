@@ -6,4 +6,4 @@ authors = ["hedgar"]
 [dependencies]
 libc = "^0.2"
 nix = "0.11.0"
-ifreq = { git = "https://github.com/glebpom/rust-ifreq.git", rev = "master" }
+ifstructs = { git = "https://github.com/glebpom/rust-ifstructs.git", rev = "master" }
