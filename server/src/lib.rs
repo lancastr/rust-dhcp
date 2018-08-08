@@ -18,7 +18,7 @@ extern crate hostname;
 extern crate tokio;
 #[macro_use]
 extern crate failure;
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 extern crate tokio_process;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 extern crate futures_cpupool;

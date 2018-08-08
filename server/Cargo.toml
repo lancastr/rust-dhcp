@@ -22,8 +22,10 @@ arrayref = "0.3.4"
 dhcp-bpf = { path = "../bpf" }
 
 [target.'cfg(any(target_os="linux", target_os="windows"))'.dependencies]
-tokio-process = "0.2.2"
 dhcp-arp = { path = "../arp" }
+
+[target.'cfg(target_os="windows")'.dependencies]
+tokio-process = "0.2.2"
 
 [dev-dependencies]
 env_logger = "0.5.10"

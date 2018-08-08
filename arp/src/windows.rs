@@ -3,8 +3,6 @@ use std::{io, net::Ipv4Addr, process::Command};
 use eui48::{MacAddress, MacAddressFormat};
 use tokio_process::CommandExt;
 
-use super::Arp;
-
 #[derive(Debug)]
 pub enum Error {
     Process(io::Error),
