@@ -98,14 +98,14 @@ impl Server {
 
         Ok(Server {
             socket,
-            iface_name,
+            iface_name: iface_name.to_owned(),
             server_ip_address,
             builder: message_builder,
             database: storage,
             #[cfg(any(target_os = "windows"))]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf: Bpf::new(&iface_name)?,
+            bpf: Bpf::new(iface_name.to_owned())?,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
             cpu_pool: CpuPool::new(4), //FIXME
         })

@@ -20,7 +20,7 @@ pub struct Bpf {
 ioctl_write_ptr!(bpf_set_interface, b'B', 108, ifreq);
 
 impl Bpf {
-    pub fn new(iface: &str) -> io::Result<Bpf> {
+    pub fn new(iface: String) -> io::Result<Bpf> {
         let mut i = 0;
         loop {
             let path_str = format!("/dev/bpf{}", i);
@@ -43,7 +43,7 @@ impl Bpf {
 
             return Ok(Bpf {
                 file,
-                iface: iface.to_owned(),
+                iface,
             });
         }
     }
