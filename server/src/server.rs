@@ -16,7 +16,7 @@ use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use dhcp_arp;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use dhcp_bpf::Bpf;
+use netif_bpf::Bpf;
 
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
@@ -105,7 +105,7 @@ impl Server {
             #[cfg(any(target_os = "windows"))]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf: Bpf::new(iface_name.to_owned())?,
+            bpf: Bpf::new(&iface_name)?,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
             cpu_pool: CpuPool::new(4), //FIXME
         })
