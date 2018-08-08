@@ -35,7 +35,7 @@ extern crate dhcp_protocol;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 extern crate dhcp_arp;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-extern crate dhcp_bpf;
+extern crate netif_bpf;
 
 pub use self::{
     server::{
