@@ -23,7 +23,8 @@ fn main() {
     let server_ip_address = Ipv4Addr::new(192, 168, 0, 2);
     let iface_name = "Ethernet".to_string();
 
-    let server = dhcp_server::Server::new(
+    #[allow(unused_mut)]
+    let mut builder = dhcp_server::ServerBuilder::new(
         server_ip_address,
         iface_name,
         (
@@ -34,12 +35,17 @@ fn main() {
             Ipv4Addr::new(192, 168, 0, 100),
             Ipv4Addr::new(192, 168, 0, 199),
         ),
-        Box::new(dhcp_server::RamStorage::new()),
+        dhcp_server::RamStorage::new(),
         Ipv4Addr::new(255, 255, 0, 0),
         vec![Ipv4Addr::new(192, 168, 0, 1)],
         vec![Ipv4Addr::new(192, 168, 0, 1)],
         vec![],
-    ).expect("Server creating error");
+    );
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    {
+        builder.with_cpu_pool(8);
+    }
+    let server = builder.finish().expect("Server creating error");
 
     let future = server.map_err(|error| error!("Error: {}", error));
 

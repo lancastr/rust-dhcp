@@ -37,4 +37,11 @@ extern crate dhcp_arp;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 extern crate dhcp_bpf;
 
-pub use self::{server::Server, storage::Storage, storage_ram::RamStorage};
+pub use self::{
+    server::{
+        Server,
+        ServerBuilder,
+    },
+    storage::Storage,
+    storage_ram::RamStorage,
+};

@@ -64,21 +64,25 @@ pub struct Ack {
 }
 
 /// DHCP persistent lease database.
-pub struct Database {
+pub struct Database<S>
+    where S: Storage,
+{
     /// The inclusive static address range.
     static_address_range: (Ipv4Addr, Ipv4Addr),
     /// The inclusive dynamic address range.
     dynamic_address_range: (Ipv4Addr, Ipv4Addr),
     /// A user defined persistent DHCP database.
-    storage: Box<Storage>,
+    storage: S,
 }
 
-impl Database {
+impl<S> Database<S>
+    where S: Storage,
+{
     /// Creates a new storage with the specified static and dynamic address pools.
     pub fn new(
         static_address_range: (Ipv4Addr, Ipv4Addr),
         dynamic_address_range: (Ipv4Addr, Ipv4Addr),
-        storage: Box<Storage>,
+        storage: S,
     ) -> Self {
         Database {
             static_address_range,
@@ -433,7 +437,7 @@ mod tests {
                 Ipv4Addr::new(192, 168, 0, 101),
                 Ipv4Addr::new(192, 168, 0, 200),
             ),
-            Box::new(RamStorage::new()),
+            RamStorage::new(),
         );
         let client_id = vec![1u8];
 
@@ -473,7 +477,7 @@ mod tests {
                 Ipv4Addr::new(192, 168, 0, 101),
                 Ipv4Addr::new(192, 168, 0, 200),
             ),
-            Box::new(RamStorage::new()),
+            RamStorage::new(),
         );
         let client_id = vec![1u8];
 
@@ -512,7 +516,7 @@ mod tests {
                 Ipv4Addr::new(192, 168, 0, 101),
                 Ipv4Addr::new(192, 168, 0, 200),
             ),
-            Box::new(RamStorage::new()),
+            RamStorage::new(),
         );
         let client_id = vec![1u8];
         let another_client_id = vec![2u8];
@@ -554,7 +558,7 @@ mod tests {
                 Ipv4Addr::new(192, 168, 0, 101),
                 Ipv4Addr::new(192, 168, 0, 200),
             ),
-            Box::new(RamStorage::new()),
+            RamStorage::new(),
         );
         let client_id = vec![1u8];
         let another_client_id = vec![2u8];
@@ -604,7 +608,7 @@ mod tests {
                 Ipv4Addr::new(192, 168, 0, 101),
                 Ipv4Addr::new(192, 168, 0, 200),
             ),
-            Box::new(RamStorage::new()),
+            RamStorage::new(),
         );
         let client_id = vec![1u8];
         let another_client_id = vec![2u8];

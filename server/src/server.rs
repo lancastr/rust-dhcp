@@ -22,23 +22,29 @@ use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
 use storage::Storage;
 
-/// The struct implementing the `Future` trait.
-pub struct Server {
-    socket: DhcpFramed,
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+const DEFAULT_CPU_POOL_SIZE: usize = 4;
+
+pub struct ServerBuilder<S>
+    where S: Storage,
+{
     server_ip_address: Ipv4Addr,
     iface_name: String,
-    builder: MessageBuilder,
-    database: Database,
-    #[cfg(any(target_os = "windows"))]
-    arp: Option<OutputAsync>,
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    bpf: Bpf,
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    cpu_pool: CpuPool,
+    static_address_range: (Ipv4Addr, Ipv4Addr),
+    dynamic_address_range: (Ipv4Addr, Ipv4Addr),
+    storage: S,
+    subnet_mask: Ipv4Addr,
+    routers: Vec<Ipv4Addr>,
+    domain_name_servers: Vec<Ipv4Addr>,
+    static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+    #[allow(unused)]
+    cpu_pool_size: Option<usize>,
 }
 
-impl Server {
-    /// Creates a server future
+impl<S> ServerBuilder<S>
+    where S: Storage,
+{
+    /// Builds a server future.
     ///
     /// * `server_ip_address`
     /// The address clients will receive in the `dhcp_server_id` option.
@@ -74,18 +80,104 @@ impl Server {
         iface_name: String,
         static_address_range: (Ipv4Addr, Ipv4Addr),
         dynamic_address_range: (Ipv4Addr, Ipv4Addr),
-        storage: Box<Storage>,
+        storage: S,
+        subnet_mask: Ipv4Addr,
+        routers: Vec<Ipv4Addr>,
+        domain_name_servers: Vec<Ipv4Addr>,
+        static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+    ) -> Self {
+        ServerBuilder {
+            server_ip_address,
+            iface_name,
+            static_address_range,
+            dynamic_address_range,
+            storage,
+            subnet_mask,
+            routers,
+            domain_name_servers,
+            static_routes,
+            cpu_pool_size: None,
+        }
+    }
+
+    /// Sets the CPU pool size used for BPF communication.
+    /// If not called during building, is defaulted to `DEFAULT_CPU_POOL_SIZE`.
+    ///
+    /// * `cpu_pool_size`
+    /// The size of the CPU pool.
+    ///
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    pub fn with_cpu_pool(&mut self, cpu_pool_size: usize) -> &mut Self {
+        self.cpu_pool_size = Some(cpu_pool_size);
+        self
+    }
+
+    /// Finishes the server building.
+    pub fn finish(self) -> io::Result<Server<S>> {
+        Server::new(
+            self.server_ip_address,
+            self.iface_name,
+            self.static_address_range,
+            self.dynamic_address_range,
+            self.storage,
+            self.subnet_mask,
+            self.routers,
+            self.domain_name_servers,
+            self.static_routes,
+            self.cpu_pool_size,
+        )
+    }
+}
+
+/// The struct implementing the `Future` trait.
+pub struct Server<S>
+    where S: Storage,
+{
+    /// The server UDP socket.
+    socket: DhcpFramed,
+    /// The IP address the server is hosted on.
+    server_ip_address: Ipv4Addr,
+    /// The name of the interface the server works on.
+    #[allow(unused)]
+    iface_name: String,
+    /// The DHCP message building helper.
+    builder: MessageBuilder,
+    /// The DHCP database using a persistent storage object.
+    database: Database<S>,
+    /// The asynchronous `netsh` process used to add ARP entries.
+    #[cfg(target_os = "windows")]
+    arp: Option<OutputAsync>,
+    /// The BPF object used to send hardware unicasts.
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    bpf: Bpf,
+    /// The CPU pool used to send hardware unicasts.
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    cpu_pool: CpuPool,
+}
+
+impl<S> Server<S>
+    where S: Storage,
+{
+    /// Creates a server future
+    #[allow(unused_variables)]
+    fn new(
+        server_ip_address: Ipv4Addr,
+        iface_name: String,
+        static_address_range: (Ipv4Addr, Ipv4Addr),
+        dynamic_address_range: (Ipv4Addr, Ipv4Addr),
+        storage: S,
 
         subnet_mask: Ipv4Addr,
         routers: Vec<Ipv4Addr>,
         domain_name_servers: Vec<Ipv4Addr>,
         static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
-    ) -> Result<Self, io::Error> {
+        cpu_pool_size: Option<usize>,
+    ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
         let hostname = hostname::get_hostname();
 
-        let message_builder = MessageBuilder::new(
+        let builder = MessageBuilder::new(
             server_ip_address,
             hostname,
             subnet_mask,
@@ -94,20 +186,20 @@ impl Server {
             static_routes,
         );
 
-        let storage = Database::new(static_address_range, dynamic_address_range, storage);
+        let database = Database::new(static_address_range, dynamic_address_range, storage);
 
         Ok(Server {
             socket,
             iface_name: iface_name.to_owned(),
             server_ip_address,
-            builder: message_builder,
-            database: storage,
-            #[cfg(any(target_os = "windows"))]
+            builder,
+            database,
+            #[cfg(target_os = "windows")]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
             bpf: Bpf::new(iface_name.to_owned())?,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            cpu_pool: CpuPool::new(4), //FIXME
+            cpu_pool: CpuPool::new(cpu_pool_size.unwrap_or(DEFAULT_CPU_POOL_SIZE)),
         })
     }
 
@@ -173,6 +265,7 @@ impl Server {
                 let mut payload = vec![0u8; BPF_PACKET_BUFFER_SIZE];
                 let amount = response.to_bytes(payload.as_mut())?;
 
+                let mut bpf = self.bpf.clone();
                 let packet = Self::ethernet_packet(
                     MacAddress::new([0x08,0x00,0x27,0x26,0xdc,0x79]),
                     response.client_hardware_address.to_owned(),
@@ -180,7 +273,6 @@ impl Server {
                     destination.to_owned(),
                     &payload[..amount],
                 )?;
-                let mut bpf = self.bpf.clone();
                 self.cpu_pool.clone().spawn_fn(move || {
                     if let Err(error) = bpf.write_all(&packet) {
                         error!("BPF sending error: {}", error);
@@ -198,6 +290,7 @@ impl Server {
         Ok(())
     }
 
+    /// Constructs a multi-layer packet for BPF communication.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     fn ethernet_packet(
         src_mac: MacAddress,
@@ -228,14 +321,16 @@ impl Server {
     }
 }
 
-impl Future for Server {
+impl<S> Future for Server<S>
+    where S: Storage,
+{
     type Item = ();
     type Error = io::Error;
 
     /// Works infinite time.
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            #[cfg(any(target_os = "windows"))]
+            #[cfg(target_os = "windows")]
             {
                 poll_arp!(self.arp);
             }
