@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use hostname;
 use tokio::{io, prelude::*};
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 use tokio_process::OutputAsync;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 use futures_cpupool::CpuPool;
@@ -14,7 +14,7 @@ use eui48::{MacAddress, EUI48LEN};
 use dhcp_framed::DhcpFramed;
 use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use dhcp_arp::{self, Arp};
+use dhcp_arp;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 use dhcp_bpf::Bpf;
 
@@ -29,12 +29,12 @@ pub struct Server {
     iface_name: String,
     builder: MessageBuilder,
     database: Database,
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "windows"))]
     arp: Option<OutputAsync>,
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    cpu_pool: CpuPool,
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     bpf: Bpf,
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    cpu_pool: CpuPool,
 }
 
 impl Server {
@@ -97,17 +97,17 @@ impl Server {
         let storage = Database::new(static_address_range, dynamic_address_range, storage);
 
         Ok(Server {
-            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            cpu_pool: CpuPool::new(4), //FIXME
-            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf: Bpf::new(&iface_name)?,
             socket,
             iface_name,
             server_ip_address,
             builder: message_builder,
             database: storage,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(any(target_os = "windows"))]
             arp: None,
+            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            bpf: Bpf::new(&iface_name)?,
+            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            cpu_pool: CpuPool::new(4), //FIXME
         })
     }
 
@@ -136,8 +136,12 @@ impl Server {
                 response.your_ip_address,
                 self.iface_name.to_owned(),
             ) {
-                Ok(Arp::Linux(_)) => {}
-                Ok(Arp::Windows(future)) => self.arp = Some(future),
+                Ok(_result) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        self.arp = Some(_result);
+                    }
+                }
                 Err(error) => error!("ARP error: {:?}", error),
             }
         }
@@ -231,7 +235,7 @@ impl Future for Server {
     /// Works infinite time.
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(any(target_os = "windows"))]
             {
                 poll_arp!(self.arp);
             }

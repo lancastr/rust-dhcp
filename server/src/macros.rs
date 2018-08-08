@@ -85,7 +85,7 @@ macro_rules! poll_complete (
 );
 
 /// Just to move some code from the overwhelmed `poll` method.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "windows"))]
 macro_rules! poll_arp (
     ($process:expr) => (
         let mut ready = false;

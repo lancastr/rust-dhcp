@@ -12,8 +12,6 @@ use nix::{
     sys::socket::{self, AddressFamily, SockFlag, SockType},
 };
 
-use super::Arp;
-
 const ARPHRD_ETHER: c_ushort = 0x01;
 const AF_INET: c_ushort = 0x02;
 const ATF_COM: c_int = 0x02;
@@ -28,7 +26,7 @@ pub enum Error {
     Syscall(nix::Error),
 }
 
-pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp, Error> {
+pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<super::Arp, Error> {
     let mut req: arpreq = unsafe { mem::zeroed() };
 
     let addr = SocketAddr::new(IpAddr::V4(ip), 0);
@@ -69,5 +67,5 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp
 
     unsafe { siocsarp(fd, &req) }.map_err(|error| Error::Syscall(error))?;
 
-    Ok(Arp::Linux(()))
+    Ok(())
 }

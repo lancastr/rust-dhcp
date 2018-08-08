@@ -5,8 +5,10 @@ authors = ["hedgar"]
 
 [dependencies]
 eui48 = "0.3.2"
-tokio-process = "0.2.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.43"
 nix = "0.11.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tokio-process = "0.2.2"

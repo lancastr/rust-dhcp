@@ -16,8 +16,8 @@ impl From<io::Error> for Error {
     }
 }
 
-pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp, Error> {
-    Ok(Arp::Windows(
+pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<super::Arp, Error> {
+    Ok(
         Command::new("netsh")
             .arg("interface")
             .arg("ip")
@@ -27,5 +27,5 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp
             .arg(ip.to_string())
             .arg(hwaddr.to_string(MacAddressFormat::Canonical))
             .output_async(),
-    ))
+    )
 }

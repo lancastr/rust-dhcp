@@ -6,17 +6,17 @@ mod os;
 mod os;
 
 extern crate eui48;
-extern crate tokio_process;
 
 #[cfg(target_os = "linux")]
 extern crate libc;
 #[cfg(target_os = "linux")]
 #[macro_use]
 extern crate nix;
+#[cfg(target_os = "windows")]
+extern crate tokio_process;
 
 use eui48::MacAddress;
 use std::net::Ipv4Addr;
-use tokio_process::OutputAsync;
 
 /// The OS-polymorphic OS-error.
 #[derive(Debug)]
@@ -28,10 +28,10 @@ impl From<os::Error> for Error {
     }
 }
 
-pub enum Arp {
-    Linux(()),
-    Windows(OutputAsync),
-}
+#[cfg(target_os = "linux")]
+pub type Arp = ();
+#[cfg(target_os = "windows")]
+pub type Arp = tokio_process::OutputAsync;
 
 /// The facade function choosing the OS implementation.
 pub fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<Arp, Error> {
