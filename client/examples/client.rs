@@ -15,7 +15,8 @@ extern crate dhcp_framed;
 extern crate dhcp_protocol;
 
 use std::{
-    io, net::{IpAddr, Ipv4Addr, SocketAddr},
+    io,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 use eui48::MacAddress;
@@ -75,8 +76,8 @@ fn main() {
     ).expect("Socket binding error")
         .split();
 
-    let server_address = Some(Ipv4Addr::new(192,168,0,1));
-    let client_address = Some(Ipv4Addr::new(192,168,0,2));
+    let server_address = Some(Ipv4Addr::new(192, 168, 0, 1));
+    let client_address = Some(Ipv4Addr::new(192, 168, 0, 2));
     let address_request = None;
     let address_time = None;
 

@@ -280,7 +280,7 @@ where
                         Ok(Async::Ready(None)) => {
                             warn!("Received an invalid packet");
                             continue;
-                        },
+                        }
                         Ok(Async::NotReady) => {
                             poll_backoff!(self.state.timer_offer);
                             self.state.set_discover_sent(false);
@@ -328,7 +328,7 @@ where
                         Ok(Async::Ready(None)) => {
                             warn!("Received an invalid packet");
                             continue;
-                        },
+                        }
                         Ok(Async::NotReady) => {
                             if let DhcpState::Init = poll_backoff!(
                                 self.state.timer_ack,
@@ -414,7 +414,7 @@ where
                         Ok(Async::Ready(None)) => {
                             warn!("Received an invalid packet");
                             continue;
-                        },
+                        }
                         Ok(Async::NotReady) => {
                             if let DhcpState::Init = poll_backoff!(
                                 self.state.timer_ack,
@@ -508,7 +508,7 @@ where
                         Ok(Async::Ready(None)) => {
                             warn!("Received an invalid packet");
                             continue;
-                        },
+                        }
                         Ok(Async::NotReady) => {
                             if let DhcpState::Rebinding = poll_forthon!(
                                 self.state.timer_rebinding,
@@ -576,7 +576,7 @@ where
                         Ok(Async::Ready(None)) => {
                             warn!("Received an invalid packet");
                             continue;
-                        },
+                        }
                         Ok(Async::NotReady) => {
                             if let DhcpState::Init = poll_forthon!(
                                 self.state.timer_expiration,

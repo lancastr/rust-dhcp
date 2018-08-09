@@ -511,8 +511,7 @@ where
 
                     // the client is in the RENEWING or REBINDING state
                     let lease_time = request.options.address_time;
-                    match self
-                        .database
+                    match self.database
                         .renew(client_id, &request.client_ip_address, lease_time)
                     {
                         Ok(ack) => {

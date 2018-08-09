@@ -65,7 +65,8 @@ pub struct Ack {
 
 /// DHCP persistent lease database.
 pub struct Database<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     /// The inclusive static address range.
     static_address_range: (Ipv4Addr, Ipv4Addr),
@@ -76,7 +77,8 @@ pub struct Database<S>
 }
 
 impl<S> Database<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     /// Creates a new storage with the specified static and dynamic address pools.
     pub fn new(
