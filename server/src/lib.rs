@@ -8,6 +8,8 @@ mod lease;
 mod server;
 mod storage;
 mod storage_ram;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+mod bpf;
 
 #[macro_use]
 extern crate log;

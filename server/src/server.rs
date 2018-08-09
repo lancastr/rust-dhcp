@@ -2,18 +2,10 @@
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use eui48::{EUI48LEN, MacAddress};
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use futures_cpupool::CpuPool;
 use hostname;
 use tokio::{io, prelude::*};
 #[cfg(target_os = "windows")]
 use tokio_process::OutputAsync;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use ifcontrol::{self, Iface};
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use netif_bpf::Bpf;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use dhcp_arp;
@@ -23,9 +15,8 @@ use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
 use storage::Storage;
-
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-const DEFAULT_CPU_POOL_SIZE: usize = 4;
+use bpf::BpfData;
 
 pub struct ServerBuilder<S>
 where
@@ -133,19 +124,6 @@ where
     }
 }
 
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-pub struct BpfData {
-    /// The BPF object used to send hardware unicasts.
-    bpf: Bpf,
-    /// The CPU pool used to send hardware unicasts.
-    cpu_pool: CpuPool,
-    /// The name of the interface the server works on.
-    #[allow(unused)]
-    iface_name: String,
-    /// The interface mac address
-    iface_hw_addr: MacAddress,
-}
-
 /// The struct implementing the `Future` trait.
 pub struct Server<S>
 where
@@ -213,39 +191,7 @@ where
             #[cfg(target_os = "windows")]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf_data: BpfData {
-                bpf: Bpf::new(&iface_name)?,
-                cpu_pool: CpuPool::new(cpu_pool_size.unwrap_or(DEFAULT_CPU_POOL_SIZE)),
-                iface_hw_addr: {
-                    let iface = Iface::find_by_name(&iface_name).map_err(|e| match e {
-                        ifcontrol::Error(ifcontrol::ErrorKind::IfaceNotFound, _) => {
-                            io::Error::new(io::ErrorKind::Other, "interface not found")
-                        }
-                        ifcontrol::Error(ifcontrol::ErrorKind::Io(e), _) => e,
-                        ifcontrol::Error(ek, _) => io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("failed to find interface: {:?}", ek),
-                        ),
-                    })?;
-                    match iface.is_up() {
-                        Err(e) => {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("failed to check iface state: {:?}", e),
-                            ))
-                        }
-                        Ok(false) => {
-                            return Err(io::Error::new(io::ErrorKind::Other, "iface is not UP"))
-                        }
-                        _ => {}
-                    };
-                    iface.hw_addr().ok_or(io::Error::new(
-                        io::ErrorKind::Other,
-                        "No HW addr on interface",
-                    ))?
-                },
-                iface_name: iface_name.to_owned(),
-            },
+            bpf_data: BpfData::new(&iface_name, cpu_pool_size)?,
         })
     }
 
@@ -310,67 +256,13 @@ where
         #[cfg(any(target_os = "freebsd", target_os = "macos"))]
         {
             if hw_unicast {
-                const BPF_PACKET_BUFFER_SIZE: usize = 8192;
-
-                trace!("Sending to {} via BPF", destination);
-                let mut payload = vec![0u8; BPF_PACKET_BUFFER_SIZE];
-                let amount = response.to_bytes(payload.as_mut())?;
-
-                let mut bpf = self.bpf_data.bpf.clone();
-                let packet = Self::ethernet_packet(
-                    self.bpf_data.iface_hw_addr,
-                    response.client_hardware_address.to_owned(),
-                    self.server_ip_address.to_owned(),
-                    destination.to_owned(),
-                    &payload[..amount],
-                )?;
-                self.bpf_data
-                    .cpu_pool
-                    .clone()
-                    .spawn_fn(move || {
-                        if let Err(error) = bpf.write_all(&packet) {
-                            error!("BPF sending error: {}", error);
-                        } else {
-                            trace!("Response has been sent via BPF");
-                        }
-                        Ok::<(), ()>(())
-                    })
-                    .forget();
-                return Ok(());
+                return self.bpf_data.send(&self.server_ip_address, &destination, response);
             }
         }
 
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_CLIENT);
         start_send!(self.socket, destination, response);
         Ok(())
-    }
-
-    /// Constructs a multi-layer packet for BPF communication.
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    fn ethernet_packet(
-        src_mac: MacAddress,
-        dst_mac: MacAddress,
-        src_ip: Ipv4Addr,
-        dst_ip: Ipv4Addr,
-        payload: &[u8],
-    ) -> io::Result<Vec<u8>> {
-        use etherparse::{PacketBuilder, WriteError};
-        const BPF_IP_TTL: u8 = 64;
-
-        let builder = PacketBuilder::ethernet2(
-            *array_ref!(src_mac.as_bytes(), 0, EUI48LEN),
-            *array_ref!(dst_mac.as_bytes(), 0, EUI48LEN),
-        ).ipv4(src_ip.octets(), dst_ip.octets(), BPF_IP_TTL)
-            .udp(DHCP_PORT_SERVER, DHCP_PORT_CLIENT);
-
-        let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
-        match builder.write(&mut result, payload) {
-            Ok(_) => Ok(result),
-            Err(WriteError::IoError(error)) => Err(error),
-            Err(WriteError::ValueError(error)) => {
-                Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", error)))
-            }
-        }
     }
 }
 
