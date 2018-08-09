@@ -2,19 +2,21 @@
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use eui48::{EUI48LEN, MacAddress};
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use futures_cpupool::CpuPool;
 use hostname;
 use tokio::{io, prelude::*};
 #[cfg(target_os = "windows")]
 use tokio_process::OutputAsync;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use futures_cpupool::CpuPool;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use eui48::{MacAddress, EUI48LEN};
 
-use dhcp_framed::DhcpFramed;
-use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use dhcp_arp;
+use dhcp_framed::DhcpFramed;
+use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use ifcontrol::{self, Iface};
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 use netif_bpf::Bpf;
 
@@ -26,7 +28,8 @@ use storage::Storage;
 const DEFAULT_CPU_POOL_SIZE: usize = 4;
 
 pub struct ServerBuilder<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     server_ip_address: Ipv4Addr,
     iface_name: String,
@@ -42,7 +45,8 @@ pub struct ServerBuilder<S>
 }
 
 impl<S> ServerBuilder<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     /// Builds a server future.
     ///
@@ -129,17 +133,28 @@ impl<S> ServerBuilder<S>
     }
 }
 
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+pub struct BpfData {
+    /// The BPF object used to send hardware unicasts.
+    bpf: Bpf,
+    /// The CPU pool used to send hardware unicasts.
+    cpu_pool: CpuPool,
+    /// The name of the interface the server works on.
+    #[allow(unused)]
+    iface_name: String,
+    /// The interface mac address
+    iface_hw_addr: MacAddress,
+}
+
 /// The struct implementing the `Future` trait.
 pub struct Server<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     /// The server UDP socket.
     socket: DhcpFramed,
     /// The IP address the server is hosted on.
     server_ip_address: Ipv4Addr,
-    /// The name of the interface the server works on.
-    #[allow(unused)]
-    iface_name: String,
     /// The DHCP message building helper.
     builder: MessageBuilder,
     /// The DHCP database using a persistent storage object.
@@ -147,16 +162,13 @@ pub struct Server<S>
     /// The asynchronous `netsh` process used to add ARP entries.
     #[cfg(target_os = "windows")]
     arp: Option<OutputAsync>,
-    /// The BPF object used to send hardware unicasts.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    bpf: Bpf,
-    /// The CPU pool used to send hardware unicasts.
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    cpu_pool: CpuPool,
+    bpf_data: BpfData,
 }
 
 impl<S> Server<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     /// Creates a server future
     #[allow(unused_variables)]
@@ -166,7 +178,6 @@ impl<S> Server<S>
         static_address_range: (Ipv4Addr, Ipv4Addr),
         dynamic_address_range: (Ipv4Addr, Ipv4Addr),
         storage: S,
-
         subnet_mask: Ipv4Addr,
         routers: Vec<Ipv4Addr>,
         domain_name_servers: Vec<Ipv4Addr>,
@@ -190,16 +201,45 @@ impl<S> Server<S>
 
         Ok(Server {
             socket,
-            iface_name: iface_name.to_owned(),
             server_ip_address,
             builder,
             database,
             #[cfg(target_os = "windows")]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf: Bpf::new(&iface_name)?,
-            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            cpu_pool: CpuPool::new(cpu_pool_size.unwrap_or(DEFAULT_CPU_POOL_SIZE)),
+            bpf_data: BpfData {
+                bpf: Bpf::new(&iface_name)?,
+                cpu_pool: CpuPool::new(cpu_pool_size.unwrap_or(DEFAULT_CPU_POOL_SIZE)),
+                iface_hw_addr: {
+                    let iface = Iface::find_by_name(&iface_name).map_err(|e| match e {
+                        ifcontrol::Error(ifcontrol::ErrorKind::IfaceNotFound, _) => {
+                            io::Error::new(io::ErrorKind::Other, "interface not found")
+                        }
+                        ifcontrol::Error(ifcontrol::ErrorKind::Io(e), _) => e,
+                        ifcontrol::Error(ek, _) => io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("failed to find interface: {:?}", ek),
+                        ),
+                    })?;
+                    match iface.is_up() {
+                        Err(e) => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("failed to check iface state: {:?}", e),
+                            ))
+                        }
+                        Ok(false) => {
+                            return Err(io::Error::new(io::ErrorKind::Other, "iface is not UP"))
+                        }
+                        _ => {}
+                    };
+                    iface.hw_addr().ok_or(io::Error::new(
+                        io::ErrorKind::Other,
+                        "No HW addr on interface",
+                    ))?
+                },
+                iface_name: iface_name.to_owned(),
+            },
         })
     }
 
@@ -228,11 +268,9 @@ impl<S> Server<S>
                 response.your_ip_address,
                 self.iface_name.to_owned(),
             ) {
-                Ok(_result) => {
-                    #[cfg(target_os = "windows")]
-                    {
-                        self.arp = Some(_result);
-                    }
+                Ok(_result) => #[cfg(target_os = "windows")]
+                {
+                    self.arp = Some(_result);
                 }
                 Err(error) => error!("ARP error: {:?}", error),
             }
@@ -253,7 +291,12 @@ impl<S> Server<S>
 
     /// Sends a response using OS-specific features.
     #[allow(unused)]
-    fn send(&mut self, response: Message, destination: Ipv4Addr, hw_unicast: bool) -> io::Result<()> {
+    fn send(
+        &mut self,
+        response: Message,
+        destination: Ipv4Addr,
+        hw_unicast: bool,
+    ) -> io::Result<()> {
         log_send!(response, destination);
 
         #[cfg(any(target_os = "freebsd", target_os = "macos"))]
@@ -265,22 +308,26 @@ impl<S> Server<S>
                 let mut payload = vec![0u8; BPF_PACKET_BUFFER_SIZE];
                 let amount = response.to_bytes(payload.as_mut())?;
 
-                let mut bpf = self.bpf.clone();
+                let mut bpf = self.bpf_data.bpf.clone();
                 let packet = Self::ethernet_packet(
-                    MacAddress::new([0x08,0x00,0x27,0x26,0xdc,0x79]),
+                    self.bpf_data.iface_hw_addr,
                     response.client_hardware_address.to_owned(),
                     self.server_ip_address.to_owned(),
                     destination.to_owned(),
                     &payload[..amount],
                 )?;
-                self.cpu_pool.clone().spawn_fn(move || {
-                    if let Err(error) = bpf.write_all(&packet) {
-                        error!("BPF sending error: {}", error);
-                    } else {
-                        trace!("Response has been sent via BPF");
-                    }
-                    Ok::<(),()>(())
-                }).forget();
+                self.bpf_data
+                    .cpu_pool
+                    .clone()
+                    .spawn_fn(move || {
+                        if let Err(error) = bpf.write_all(&packet) {
+                            error!("BPF sending error: {}", error);
+                        } else {
+                            trace!("Response has been sent via BPF");
+                        }
+                        Ok::<(), ()>(())
+                    })
+                    .forget();
                 return Ok(());
             }
         }
@@ -305,24 +352,23 @@ impl<S> Server<S>
         let builder = PacketBuilder::ethernet2(
             *array_ref!(src_mac.as_bytes(), 0, EUI48LEN),
             *array_ref!(dst_mac.as_bytes(), 0, EUI48LEN),
-        )
-            .ipv4(src_ip.octets(), dst_ip.octets(), BPF_IP_TTL)
+        ).ipv4(src_ip.octets(), dst_ip.octets(), BPF_IP_TTL)
             .udp(DHCP_PORT_SERVER, DHCP_PORT_CLIENT);
 
         let mut result = Vec::<u8>::with_capacity(builder.size(payload.len()));
         match builder.write(&mut result, payload) {
             Ok(_) => Ok(result),
             Err(WriteError::IoError(error)) => Err(error),
-            Err(WriteError::ValueError(error)) => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("{:?}", error),
-            )),
+            Err(WriteError::ValueError(error)) => {
+                Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", error)))
+            }
         }
     }
 }
 
 impl<S> Future for Server<S>
-    where S: Storage,
+where
+    S: Storage,
 {
     type Item = ();
     type Error = io::Error;
@@ -420,7 +466,8 @@ impl<S> Future for Server<S>
                         match self.database.assign(client_id, &address, lease_time) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let (destination, hw_unicast) = self.destination(&request, &response);
+                                let (destination, hw_unicast) =
+                                    self.destination(&request, &response);
                                 self.send(response, destination, hw_unicast)?;
                             }
                             Err(error) => {
@@ -440,7 +487,8 @@ impl<S> Future for Server<S>
                         match self.database.check(client_id, &address) {
                             Ok(ack) => {
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
-                                let (destination, hw_unicast) = self.destination(&request, &response);
+                                let (destination, hw_unicast) =
+                                    self.destination(&request, &response);
                                 self.send(response, destination, hw_unicast)?;
                             }
                             Err(error) => {
@@ -463,7 +511,8 @@ impl<S> Future for Server<S>
 
                     // the client is in the RENEWING or REBINDING state
                     let lease_time = request.options.address_time;
-                    match self.database
+                    match self
+                        .database
                         .renew(client_id, &request.client_ip_address, lease_time)
                     {
                         Ok(ack) => {

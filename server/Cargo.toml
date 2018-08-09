@@ -16,6 +16,7 @@ dhcp-framed = { path = "../framed" }
 
 [target.'cfg(any(target_os="freebsd", target_os="macos"))'.dependencies]
 netif-bpf = { git = "https://github.com/glebpom/rust-netif", rev="master" }
+ifcontrol = { git = "https://github.com/glebpom/rust-netif", rev="master" }
 futures-cpupool = "0.1.8"
 eui48 = "0.3.2"
 etherparse = "0.5.0"
