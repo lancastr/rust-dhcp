@@ -29,15 +29,15 @@ extern crate tokio_process;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 #[macro_use]
 extern crate arrayref;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+extern crate ifcontrol;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+extern crate netif_bpf;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 extern crate dhcp_arp;
 extern crate dhcp_framed;
 extern crate dhcp_protocol;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-extern crate ifcontrol;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-extern crate netif_bpf;
 
 pub use self::{
     server::{Server, ServerBuilder},

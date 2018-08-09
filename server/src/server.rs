@@ -10,15 +10,15 @@ use hostname;
 use tokio::{io, prelude::*};
 #[cfg(target_os = "windows")]
 use tokio_process::OutputAsync;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use ifcontrol::{self, Iface};
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use netif_bpf::Bpf;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use dhcp_arp;
 use dhcp_framed::DhcpFramed;
 use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use ifcontrol::{self, Iface};
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use netif_bpf::Bpf;
 
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
@@ -155,6 +155,9 @@ where
     socket: DhcpFramed,
     /// The IP address the server is hosted on.
     server_ip_address: Ipv4Addr,
+    /// The interface the server works on.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    iface_name: String,
     /// The DHCP message building helper.
     builder: MessageBuilder,
     /// The DHCP database using a persistent storage object.
@@ -162,6 +165,7 @@ where
     /// The asynchronous `netsh` process used to add ARP entries.
     #[cfg(target_os = "windows")]
     arp: Option<OutputAsync>,
+    /// The structure with BPF specific data.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     bpf_data: BpfData,
 }
@@ -170,7 +174,7 @@ impl<S> Server<S>
 where
     S: Storage,
 {
-    /// Creates a server future
+    /// Creates a server future.
     #[allow(unused_variables)]
     fn new(
         server_ip_address: Ipv4Addr,
@@ -202,6 +206,8 @@ where
         Ok(Server {
             socket,
             server_ip_address,
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            iface_name: iface_name.to_owned(),
             builder,
             database,
             #[cfg(target_os = "windows")]
@@ -268,9 +274,11 @@ where
                 response.your_ip_address,
                 self.iface_name.to_owned(),
             ) {
-                Ok(_result) => #[cfg(target_os = "windows")]
-                {
-                    self.arp = Some(_result);
+                Ok(_result) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        self.arp = Some(_result);
+                    }
                 }
                 Err(error) => error!("ARP error: {:?}", error),
             }
