@@ -34,7 +34,7 @@ where
     static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
     classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
     #[allow(unused)]
-    bpf_cpu_pool_size: Option<usize>,
+    bpf_num_threads_size: Option<usize>,
 }
 
 impl<S> ServerBuilder<S>
@@ -98,7 +98,7 @@ where
             domain_name_servers,
             static_routes,
             classless_static_routes,
-            bpf_cpu_pool_size: None,
+            bpf_num_threads_size: None,
         }
     }
 
@@ -106,8 +106,8 @@ where
     ///
     /// If not called during building, the BPF object will use its default pool size.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    pub fn with_bpf_cpu_pool(&mut self, bpf_cpu_pool_size: usize) -> &mut Self {
-        self.bpf_cpu_pool_size = Some(bpf_cpu_pool_size);
+    pub fn with_bpf_num_threads(&mut self, bpf_num_threads_size: usize) -> &mut Self {
+        self.bpf_num_threads_size = Some(bpf_num_threads_size);
         self
     }
 
@@ -124,7 +124,7 @@ where
             self.domain_name_servers,
             self.static_routes,
             self.classless_static_routes,
-            self.bpf_cpu_pool_size,
+            self.bpf_num_threads_size,
         )
     }
 }
@@ -170,7 +170,7 @@ where
         domain_name_servers: Vec<Ipv4Addr>,
         static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
         classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
-        bpf_cpu_pool_size: Option<usize>,
+        bpf_num_threads_size: Option<usize>,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
@@ -198,7 +198,7 @@ where
             #[cfg(target_os = "windows")]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf_data: BpfData::new(&iface_name, bpf_cpu_pool_size)?,
+            bpf_data: BpfData::new(&iface_name, bpf_num_threads_size)?,
         })
     }
 
