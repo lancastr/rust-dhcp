@@ -102,6 +102,11 @@ pub enum OptionTag {
     StreetTalkServers,
     StdaServers,
 
+    /*
+    RFC 3442 (The Classless Static Route Option)
+    */
+    ClasslessStaticRoutes = 121,
+
     End = 255,
 }
 
@@ -186,6 +191,8 @@ impl From<u8> for OptionTag {
             74 => IrcServers,
             75 => StreetTalkServers,
             76 => StdaServers,
+
+            121 => ClasslessStaticRoutes,
 
             255 => End,
             _ => Unknown,

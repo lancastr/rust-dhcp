@@ -1,6 +1,5 @@
 use std::{
-    cmp,
-    mem,
+    cmp, mem,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     ptr,
 };

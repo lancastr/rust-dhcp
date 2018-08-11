@@ -129,6 +129,9 @@ where
     /// lease (if the lease is acceptable to local policy) or select
     /// another lease.
     ///
+    /// # Errors
+    /// `self::Error` on internal storage error.
+    /// `self::Error` on dynamic pool exhaustion.
     pub fn allocate(
         &mut self,
         client_id: &[u8],
@@ -210,7 +213,8 @@ where
         }
 
         // address allocation case 4, giaddr stuff not implemented
-        let address = self.get_dynamic_available()?
+        let address = self
+            .get_dynamic_available()?
             .ok_or(Error::DynamicPoolExhausted)?;
         let lease_time = self.offer(&address, client_id, lease_time, false)?;
         let offer = Offer {
@@ -227,6 +231,10 @@ where
     }
 
     /// Assigns a previously offered address.
+    ///
+    /// # Errors
+    /// `self::Error` on internal storage error.
+    /// `self::Error` on address assignment error.
     pub fn assign(
         &mut self,
         client_id: &[u8],
@@ -266,6 +274,10 @@ where
     }
 
     /// Renewes a previously assigned address.
+    ///
+    /// # Errors
+    /// `self::Error` on internal storage error.
+    /// `self::Error` on address renewal error.
     pub fn renew(
         &mut self,
         client_id: &[u8],
@@ -299,6 +311,10 @@ where
     }
 
     /// Deallocates a previously offered or assigned address.
+    /// Does not return an error if the address has not been allocated.
+    ///
+    /// # Errors
+    /// `self::Error` on internal storage error.
     pub fn deallocate(&mut self, client_id: &[u8], address: &Ipv4Addr) -> Result<(), Error> {
         self.storage.delete_client(address)?;
         self.storage
@@ -307,12 +323,19 @@ where
     }
 
     /// Freezes an address due to a `DHCPDECLINE` message.
+    ///
+    /// # Errors
+    /// `self::Error` on internal storage error.
     pub fn freeze(&mut self, address: &Ipv4Addr) -> Result<(), Error> {
         self.storage.add_frozen(address)?;
         Ok(())
     }
 
     /// Checks the address of a client in the `INIT-REBOOT` state.
+    ///
+    /// # Errors
+    /// `self::Error` on internal storage error.
+    /// `self::Error` if the address is not leased to the client.
     pub fn check(&self, client_id: &[u8], address: &Ipv4Addr) -> Result<Ack, Error> {
         if let Some(lease) = self.storage.get_lease(&client_id)? {
             if lease.address() == *address && !lease.is_expired() && !lease.is_released() {

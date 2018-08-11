@@ -2,14 +2,14 @@
 
 #[macro_use]
 mod macros;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+mod bpf;
 mod builder;
 mod database;
 mod lease;
 mod server;
 mod storage;
 mod storage_ram;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-mod bpf;
 
 #[macro_use]
 extern crate log;

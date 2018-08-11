@@ -22,7 +22,7 @@ impl Message {
     /// Returns `Error::Validation` if any option is invalid.
     pub fn validate(&self) -> Result<MessageType, Error> {
         let dhcp_message_type = match self.options.dhcp_message_type {
-            Some(MessageType::Undefined) | None => {
+            None | Some(MessageType::Undefined) => {
                 return Err(Error::Validation("dhcp_message_type"))
             }
             Some(dhcp_message_type) => dhcp_message_type,
@@ -31,14 +31,11 @@ impl Message {
         match dhcp_message_type {
             // client generated packets section
             MessageType::DhcpDiscover => {}
-            MessageType::DhcpRequest => {
-                if self.options.dhcp_server_id.is_some() {
-                    must_set_option!(self.options.address_request, "address_request");
-                }
-                if self.client_ip_address.is_unspecified() {
-                    must_set_option!(self.options.address_request, "address_request");
-                }
-            }
+            MessageType::DhcpRequest => if self.client_ip_address.is_unspecified()
+                || self.options.dhcp_server_id.is_some()
+            {
+                must_set_option!(self.options.address_request, "address_request");
+            },
             MessageType::DhcpInform => {}
             MessageType::DhcpRelease => {
                 must_set_option!(self.options.dhcp_server_id, "dhcp_server_id");

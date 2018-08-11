@@ -20,6 +20,8 @@ pub struct MessageBuilder {
     domain_name_servers: Vec<Ipv4Addr>,
     /// Sent to clients in options.
     static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+    /// Sent to clients in options.
+    classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
 }
 
 impl MessageBuilder {
@@ -32,6 +34,7 @@ impl MessageBuilder {
         routers: Vec<Ipv4Addr>,
         domain_name_servers: Vec<Ipv4Addr>,
         static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+        classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
     ) -> Self {
         MessageBuilder {
             server_ip_address,
@@ -41,6 +44,7 @@ impl MessageBuilder {
             routers,
             domain_name_servers,
             static_routes,
+            classless_static_routes,
         }
     }
 
@@ -190,14 +194,25 @@ impl MessageBuilder {
         for tag in parameter_list {
             match (*tag).into() {
                 OptionTag::SubnetMask => options.subnet_mask = Some(self.subnet_mask),
-                OptionTag::Routers => if self.routers.len() > 0 {
+                OptionTag::Routers => if (!parameter_list
+                    .contains(&(OptionTag::ClasslessStaticRoutes as u8))
+                    || self.classless_static_routes.len() == 0)
+                    && self.routers.len() > 0
+                {
                     options.routers = Some(self.routers.to_owned());
                 },
                 OptionTag::DomainNameServers => if self.domain_name_servers.len() > 0 {
                     options.domain_name_servers = Some(self.domain_name_servers.to_owned());
                 },
-                OptionTag::StaticRoutes => if self.static_routes.len() > 0 {
+                OptionTag::StaticRoutes => if (!parameter_list
+                    .contains(&(OptionTag::ClasslessStaticRoutes as u8))
+                    || self.classless_static_routes.len() == 0)
+                    && self.static_routes.len() > 0
+                {
                     options.static_routes = Some(self.static_routes.to_owned())
+                },
+                OptionTag::ClasslessStaticRoutes => if self.classless_static_routes.len() > 0 {
+                    options.classless_static_routes = Some(self.classless_static_routes.to_owned())
                 },
                 _ => continue,
             }

@@ -333,6 +333,16 @@ impl fmt::Display for Message {
             code_iter
         );
         write_opt!(f, self.options.stda_servers, "stda_servers", code_iter);
+
+        let mut code_iter =
+            (OptionTag::ClasslessStaticRoutes as u8)..=(OptionTag::ClasslessStaticRoutes as u8);
+        write_opt!(
+            f,
+            self.options.classless_static_routes,
+            "classless_static_routes",
+            code_iter
+        );
+
         writeln!(
             f,
             "___________________________________________________________________________"

@@ -224,6 +224,10 @@ impl Message {
                 }
                 StdaServers => options.stda_servers = Some(Self::get_vec_ipv4(&mut cursor)?),
 
+                ClasslessStaticRoutes => {
+                    options.classless_static_routes = Some(Self::get_vec_ipv4_triples(&mut cursor)?)
+                }
+
                 End => break,
                 Pad => continue,
                 Unknown => Self::skip(&mut cursor)?,
@@ -323,6 +327,27 @@ impl Message {
         for _ in 0..amount {
             check_remaining!(cursor, element_size);
             value.push((
+                Ipv4Addr::from(cursor.get_u32_be()),
+                Ipv4Addr::from(cursor.get_u32_be()),
+            ))
+        }
+        Ok(value)
+    }
+
+    fn get_vec_ipv4_triples(
+        cursor: &mut io::Cursor<&[u8]>,
+    ) -> io::Result<Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>> {
+        check_remaining!(cursor, mem::size_of::<u8>());
+        let len = cursor.get_u8() as usize;
+        let element_size = mem::size_of::<u32>() * 3;
+        check_divisibility!(len, element_size);
+        check_remaining!(cursor, len);
+        let amount = len / element_size;
+        let mut value = Vec::with_capacity(amount);
+        for _ in 0..amount {
+            check_remaining!(cursor, element_size);
+            value.push((
+                Ipv4Addr::from(cursor.get_u32_be()),
                 Ipv4Addr::from(cursor.get_u32_be()),
                 Ipv4Addr::from(cursor.get_u32_be()),
             ))

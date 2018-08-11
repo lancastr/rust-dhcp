@@ -12,12 +12,13 @@ use dhcp_arp;
 use dhcp_framed::DhcpFramed;
 use dhcp_protocol::{Message, MessageType, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+use bpf::BpfData;
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
 use storage::Storage;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-use bpf::BpfData;
 
+/// Some options like `cpu_pool_size` are OS-specific, so the builder pattern is required.
 pub struct ServerBuilder<S>
 where
     S: Storage,
@@ -31,6 +32,7 @@ where
     routers: Vec<Ipv4Addr>,
     domain_name_servers: Vec<Ipv4Addr>,
     static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+    classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
     #[allow(unused)]
     cpu_pool_size: Option<usize>,
 }
@@ -70,6 +72,9 @@ where
     /// * `static_routes`
     /// Static data for client configuration.
     ///
+    /// * `classless_static_routes`
+    /// Static data for client configuration.
+    ///
     pub fn new(
         server_ip_address: Ipv4Addr,
         iface_name: String,
@@ -80,6 +85,7 @@ where
         routers: Vec<Ipv4Addr>,
         domain_name_servers: Vec<Ipv4Addr>,
         static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+        classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
     ) -> Self {
         ServerBuilder {
             server_ip_address,
@@ -91,23 +97,20 @@ where
             routers,
             domain_name_servers,
             static_routes,
+            classless_static_routes,
             cpu_pool_size: None,
         }
     }
 
     /// Sets the CPU pool size used for BPF communication.
-    /// If not called during building, is defaulted to `DEFAULT_CPU_POOL_SIZE`.
-    ///
-    /// * `cpu_pool_size`
-    /// The size of the CPU pool.
-    ///
+    /// If not called during building, the BPF object will use its default pool size.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     pub fn with_cpu_pool(&mut self, cpu_pool_size: usize) -> &mut Self {
         self.cpu_pool_size = Some(cpu_pool_size);
         self
     }
 
-    /// Finishes the server building.
+    /// Consumes the builder and returns the built server.
     pub fn finish(self) -> io::Result<Server<S>> {
         Server::new(
             self.server_ip_address,
@@ -119,6 +122,7 @@ where
             self.routers,
             self.domain_name_servers,
             self.static_routes,
+            self.classless_static_routes,
             self.cpu_pool_size,
         )
     }
@@ -143,7 +147,7 @@ where
     /// The asynchronous `netsh` process used to add ARP entries.
     #[cfg(target_os = "windows")]
     arp: Option<OutputAsync>,
-    /// The structure with BPF specific data.
+    /// The object encapsulating BPF functionality.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     bpf_data: BpfData,
 }
@@ -164,6 +168,7 @@ where
         routers: Vec<Ipv4Addr>,
         domain_name_servers: Vec<Ipv4Addr>,
         static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
+        classless_static_routes: Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>,
         cpu_pool_size: Option<usize>,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DHCP_PORT_SERVER);
@@ -177,6 +182,7 @@ where
             routers,
             domain_name_servers,
             static_routes,
+            classless_static_routes,
         );
 
         let database = Database::new(static_address_range, dynamic_address_range, storage);
@@ -198,7 +204,7 @@ where
     /// Chooses the destination IP according to RFC 2131 rules.
     ///
     /// Performs the ARP query in hardware unicast cases and sets the `arp` field
-    /// if ARP processing is expected to be too long for the tokio reactor.    ///
+    /// if ARP processing is expected to be too long for the tokio reactor.
     /// The bool flag is `true` if hardware unicast is required.
     fn destination(&mut self, request: &Message, response: &Message) -> (Ipv4Addr, bool) {
         if !request.client_ip_address.is_unspecified() {
@@ -256,7 +262,9 @@ where
         #[cfg(any(target_os = "freebsd", target_os = "macos"))]
         {
             if hw_unicast {
-                return self.bpf_data.send(&self.server_ip_address, &destination, response);
+                return self
+                    .bpf_data
+                    .send(&self.server_ip_address, &destination, response);
             }
         }
 
@@ -274,6 +282,8 @@ where
     type Error = io::Error;
 
     /// Works infinite time.
+    ///
+    /// [RFC 2131](https://tools.ietf.org/html/rfc2131)
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
             #[cfg(target_os = "windows")]
@@ -411,7 +421,8 @@ where
 
                     // the client is in the RENEWING or REBINDING state
                     let lease_time = request.options.address_time;
-                    match self.database
+                    match self
+                        .database
                         .renew(client_id, &request.client_ip_address, lease_time)
                     {
                         Ok(ack) => {

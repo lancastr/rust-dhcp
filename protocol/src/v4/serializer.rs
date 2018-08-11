@@ -160,7 +160,8 @@ impl Message {
         Self::put_u8(
             &mut cursor,
             DhcpMessageType,
-            &self.options
+            &self
+                .options
                 .dhcp_message_type
                 .as_ref()
                 .map(|v| v.clone() as u8),
@@ -208,6 +209,8 @@ impl Message {
             &self.options.street_talk_servers,
         )?;
         Self::put_vec_ipv4(&mut cursor, StdaServers, &self.options.stda_servers)?;
+
+        Self::put_classless_static_routes(&mut cursor, ClasslessStaticRoutes, &self.options.classless_static_routes)?;
 
         check_remaining!(cursor, mem::size_of::<u8>());
         cursor.put_u8(End as u8);
@@ -280,6 +283,9 @@ impl Message {
         value: &Option<String>,
     ) -> io::Result<()> {
         if let Some(ref value) = value {
+            if value.is_empty() {
+                return Ok(());
+            }
             let size = value.len();
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
@@ -295,10 +301,10 @@ impl Message {
         value: &Option<Vec<u8>>,
     ) -> io::Result<()> {
         if let Some(ref value) = value {
-            let size = value.len();
-            if size == 0 {
+            if value.is_empty() {
                 return Ok(());
             }
+            let size = value.len();
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
@@ -313,10 +319,10 @@ impl Message {
         value: &Option<Vec<u16>>,
     ) -> io::Result<()> {
         if let Some(ref value) = value {
-            let size = value.len() * mem::size_of::<u16>();
-            if size == 0 {
+            if value.is_empty() {
                 return Ok(());
             }
+            let size = value.len() * mem::size_of::<u16>();
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
@@ -333,10 +339,10 @@ impl Message {
         value: &Option<Vec<Ipv4Addr>>,
     ) -> io::Result<()> {
         if let Some(ref value) = value {
-            let size = value.len() * mem::size_of::<u32>();
-            if size == 0 {
+            if value.is_empty() {
                 return Ok(());
             }
+            let size = value.len() * mem::size_of::<u32>();
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
@@ -353,16 +359,64 @@ impl Message {
         value: &Option<Vec<(Ipv4Addr, Ipv4Addr)>>,
     ) -> io::Result<()> {
         if let Some(ref value) = value {
-            let size = value.len() * mem::size_of::<u32>() * 2;
-            if size == 0 {
+            if value.is_empty() {
                 return Ok(());
             }
+            let size = value.len() * mem::size_of::<u32>() * 2;
             check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             for element in value.iter() {
                 cursor.put_u32_be(u32::from(element.0.to_owned()));
                 cursor.put_u32_be(u32::from(element.1.to_owned()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Described and explained [RFC 3442](https://tools.ietf.org/html/rfc3442).
+    fn put_classless_static_routes(
+        cursor: &mut io::Cursor<&mut [u8]>,
+        tag: OptionTag,
+        value: &Option<Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>>,
+    ) -> io::Result<()> {
+        const BITS_IN_BYTE: usize = 8;
+        const IPV4_BITSIZE: usize = mem::size_of::<u32>() * BITS_IN_BYTE;
+        const MAX_DESCRIPTOR_SIZE: usize = 1 + mem::size_of::<u32>();
+
+        if let Some(ref value) = value {
+            if value.is_empty() {
+                return Ok(());
+            }
+            let mut size = value.len() * mem::size_of::<u32>();
+            let mut descriptors = Vec::<Vec<u8>>::with_capacity(value.len());
+            for element in value.iter() {
+                let subnet_number = element.0;
+                let i_subnet_mask = u32::from(element.1);
+                let mut subnet_mask_size = 0;
+
+                for i in 0..IPV4_BITSIZE {
+                    if i_subnet_mask & (1 << i) != 0 {
+                        subnet_mask_size = 32 - i;
+                        break;
+                    }
+                }
+                let mut descriptor = Vec::<u8>::with_capacity(MAX_DESCRIPTOR_SIZE);
+                descriptor.push(subnet_mask_size as u8);
+                for i in 0..mem::size_of::<u32>() {
+                    if subnet_mask_size > i * BITS_IN_BYTE {
+                        descriptor.push(subnet_number.octets()[i]);
+                    }
+                }
+                size += descriptor.len();
+                descriptors.push(descriptor);
+            }
+            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            cursor.put_u8(tag as u8);
+            cursor.put_u8(size as u8);
+            for i in 0..value.len() {
+                cursor.put(descriptors.get(i).unwrap());
+                cursor.put_u32_be(u32::from(value.get(i).unwrap().2.to_owned()));
             }
         }
         Ok(())

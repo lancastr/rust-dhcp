@@ -1,3 +1,6 @@
+//! BPF features module.
+//! Wrap it with conditional compilation attribute only for operating systems supporting it.
+
 use std::{
     io::{self, Write},
     net::Ipv4Addr,
@@ -8,11 +11,7 @@ use futures_cpupool::CpuPool;
 use ifcontrol::{self, Iface};
 use netif_bpf::Bpf;
 
-use dhcp_protocol::{
-    Message,
-    DHCP_PORT_SERVER,
-    DHCP_PORT_CLIENT,
-};
+use dhcp_protocol::{Message, DHCP_PORT_CLIENT, DHCP_PORT_SERVER};
 
 const DEFAULT_CPU_POOL_SIZE: usize = 4;
 const DEFAULT_IP_TTL: u8 = 64;
@@ -23,7 +22,7 @@ pub struct BpfData {
     bpf: Bpf,
     /// The CPU pool used to send hardware unicasts.
     cpu_pool: CpuPool,
-    /// The interface mac address
+    /// The interface MAC address.
     iface_hw_addr: MacAddress,
 }
 
@@ -33,7 +32,7 @@ impl BpfData {
     /// The CPU pool size is defaulted to `DEFAULT_CPU_POOL_SIZE` if not specified.
     ///
     /// # Errors
-    /// Returns an `io::Error` if there is something wrong with the interface.
+    /// `io::Error` if there is something wrong with the interface.
     pub fn new(iface_name: &str, cpu_pool_size: Option<usize>) -> io::Result<Self> {
         Ok(BpfData {
             bpf: Bpf::new(iface_name)?,
@@ -57,7 +56,10 @@ impl BpfData {
                         ))
                     }
                     Ok(false) => {
-                        return Err(io::Error::new(io::ErrorKind::Other, "The interface is not UP"))
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "The interface is not UP",
+                        ))
                     }
                     _ => {}
                 };
@@ -70,7 +72,16 @@ impl BpfData {
     }
 
     /// Sends a DHCP `message` from `source` to `destination` via BPF.
-    pub fn send(&mut self, source: &Ipv4Addr, destination: &Ipv4Addr, message: Message) -> io::Result<()> {
+    ///
+    /// # Errors
+    /// `io::Error` on a message serializing error.
+    /// `io::Error` on an Ethernet packet building error.
+    pub fn send(
+        &mut self,
+        source: &Ipv4Addr,
+        destination: &Ipv4Addr,
+        message: Message,
+    ) -> io::Result<()> {
         trace!("Sending to {} via BPF", destination);
 
         let mut payload = vec![0u8; DEFAULT_PACKET_BUFFER_SIZE];

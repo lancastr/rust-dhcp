@@ -29,6 +29,9 @@ pub struct DhcpFramed {
 
 impl DhcpFramed {
     /// Binds to `addr` and returns a `Stream+Sink` UDP socket abstraction.
+    ///
+    /// # Errors
+    /// `io::Error` on unsuccessful socket building or binding.
     #[allow(unused_variables)]
     pub fn new(addr: SocketAddr, reuse_addr: bool, reuse_port: bool) -> io::Result<Self> {
         let socket = UdpBuilder::new_v4()?;
@@ -61,7 +64,7 @@ impl Stream for DhcpFramed {
     type Error = io::Error;
 
     /// Returns `Ok(Async::Ready(Some(_)))` on successful
-    /// both read from socket and decoding the message.
+    /// both read from socket and decoding the message.    ///
     /// Returns `Ok(Async::Ready(None))` a on parsing error.
     ///
     /// # Errors
@@ -80,8 +83,7 @@ impl Sink for DhcpFramed {
     type SinkError = io::Error;
 
     /// Returns `Ok(AsyncSink::Ready)` on successful sending or
-    /// storing the data in order to send it when the socket is ready.
-    ///
+    /// storing the data in order to send it when the socket is ready.    ///
     /// Returns `Ok(AsyncSink::NotReady(item))` if there is pending data.
     ///
     /// # Errors
@@ -98,8 +100,7 @@ impl Sink for DhcpFramed {
         Ok(AsyncSink::Ready)
     }
 
-    /// Returns `Ok(Async::Ready(()))` on successful sending.
-    ///
+    /// Returns `Ok(Async::Ready(()))` on successful sending.    ///
     /// Returns `Ok(Async::NotReady)` if the socket is not ready for sending.
     ///
     /// # Errors

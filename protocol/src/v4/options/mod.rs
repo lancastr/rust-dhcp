@@ -10,8 +10,10 @@ use std::net::Ipv4Addr;
 
 /// DHCP options.
 ///
-/// Implemented totally with `Option` for better flexibility and polymorphism.
-/// Only a part of RFC 2132 is implemented for now.
+/// Implemented completely with `Option` for better flexibility and polymorphism.
+///
+/// [RFC 2132](https://tools.ietf.org/html/rfc2132)
+/// [RFC 3442](https://tools.ietf.org/html/rfc3442)
 #[derive(Default)]
 pub struct Options {
     /*
@@ -109,4 +111,9 @@ pub struct Options {
     pub irc_servers: Option<Vec<Ipv4Addr>>,
     pub street_talk_servers: Option<Vec<Ipv4Addr>>,
     pub stda_servers: Option<Vec<Ipv4Addr>>,
+
+    /*
+    RFC 3442 (The Classless Static Route Option)
+    */
+    pub classless_static_routes: Option<Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>>,
 }
