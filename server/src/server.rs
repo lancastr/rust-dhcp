@@ -97,25 +97,14 @@ where
             routers,
             domain_name_servers,
             static_routes,
-<<<<<<< HEAD
             classless_static_routes,
-            cpu_pool_size: None,
-=======
             bpf_cpu_pool_size: None,
->>>>>>> 16ebccdcf3e813262d643802103e8f02f3d3de4a
         }
     }
 
     /// Sets the CPU pool size used for BPF communication.
-<<<<<<< HEAD
+    ///
     /// If not called during building, the BPF object will use its default pool size.
-=======
-    /// If not called during building, is defaulted to `DEFAULT_BPF_CPU_POOL_SIZE`.
-    ///
-    /// * `bpf_cpu_pool_size`
-    /// The size of the CPU pool.
-    ///
->>>>>>> 16ebccdcf3e813262d643802103e8f02f3d3de4a
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     pub fn with_bpf_cpu_pool(&mut self, bpf_cpu_pool_size: usize) -> &mut Self {
         self.bpf_cpu_pool_size = Some(bpf_cpu_pool_size);
@@ -134,12 +123,8 @@ where
             self.routers,
             self.domain_name_servers,
             self.static_routes,
-<<<<<<< HEAD
             self.classless_static_routes,
-            self.cpu_pool_size,
-=======
             self.bpf_cpu_pool_size,
->>>>>>> 16ebccdcf3e813262d643802103e8f02f3d3de4a
         )
     }
 }
