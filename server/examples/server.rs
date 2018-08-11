@@ -52,7 +52,7 @@ fn main() {
     );
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     {
-        builder.with_cpu_pool(8);
+        builder.with_bpf_cpu_pool(8);
     }
     let server = builder.finish().expect("Server creating error");
 
