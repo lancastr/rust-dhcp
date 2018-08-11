@@ -32,7 +32,7 @@ where
     domain_name_servers: Vec<Ipv4Addr>,
     static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
     #[allow(unused)]
-    cpu_pool_size: Option<usize>,
+    bpf_cpu_pool_size: Option<usize>,
 }
 
 impl<S> ServerBuilder<S>
@@ -91,19 +91,19 @@ where
             routers,
             domain_name_servers,
             static_routes,
-            cpu_pool_size: None,
+            bpf_cpu_pool_size: None,
         }
     }
 
     /// Sets the CPU pool size used for BPF communication.
-    /// If not called during building, is defaulted to `DEFAULT_CPU_POOL_SIZE`.
+    /// If not called during building, is defaulted to `DEFAULT_BPF_CPU_POOL_SIZE`.
     ///
-    /// * `cpu_pool_size`
+    /// * `bpf_cpu_pool_size`
     /// The size of the CPU pool.
     ///
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    pub fn with_cpu_pool(&mut self, cpu_pool_size: usize) -> &mut Self {
-        self.cpu_pool_size = Some(cpu_pool_size);
+    pub fn with_bpf_cpu_pool(&mut self, bpf_cpu_pool_size: usize) -> &mut Self {
+        self.bpf_cpu_pool_size = Some(bpf_cpu_pool_size);
         self
     }
 
@@ -119,7 +119,7 @@ where
             self.routers,
             self.domain_name_servers,
             self.static_routes,
-            self.cpu_pool_size,
+            self.bpf_cpu_pool_size,
         )
     }
 }
@@ -164,7 +164,7 @@ where
         routers: Vec<Ipv4Addr>,
         domain_name_servers: Vec<Ipv4Addr>,
         static_routes: Vec<(Ipv4Addr, Ipv4Addr)>,
-        cpu_pool_size: Option<usize>,
+        bpf_cpu_pool_size: Option<usize>,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DHCP_PORT_SERVER);
         let socket = DhcpFramed::new(addr, false, false)?;
@@ -191,7 +191,7 @@ where
             #[cfg(target_os = "windows")]
             arp: None,
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            bpf_data: BpfData::new(&iface_name, cpu_pool_size)?,
+            bpf_data: BpfData::new(&iface_name, bpf_cpu_pool_size)?,
         })
     }
 

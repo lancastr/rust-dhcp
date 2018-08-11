@@ -14,7 +14,7 @@ use dhcp_protocol::{
     DHCP_PORT_CLIENT,
 };
 
-const DEFAULT_CPU_POOL_SIZE: usize = 4;
+const DEFAULT_BPF_CPU_POOL_SIZE: usize = 4;
 const DEFAULT_IP_TTL: u8 = 64;
 const DEFAULT_PACKET_BUFFER_SIZE: usize = 8192;
 
@@ -30,14 +30,14 @@ pub struct BpfData {
 impl BpfData {
     /// Constructs a new BPF object on the specified interface with a CPU pool.
     ///
-    /// The CPU pool size is defaulted to `DEFAULT_CPU_POOL_SIZE` if not specified.
+    /// The CPU pool size is defaulted to `DEFAULT_BPF_CPU_POOL_SIZE` if not specified.
     ///
     /// # Errors
     /// Returns an `io::Error` if there is something wrong with the interface.
-    pub fn new(iface_name: &str, cpu_pool_size: Option<usize>) -> io::Result<Self> {
+    pub fn new(iface_name: &str, bpf_cpu_pool_size: Option<usize>) -> io::Result<Self> {
         Ok(BpfData {
             bpf: Bpf::new(iface_name)?,
-            cpu_pool: CpuPool::new(cpu_pool_size.unwrap_or(DEFAULT_CPU_POOL_SIZE)),
+            cpu_pool: CpuPool::new(bpf_cpu_pool_size.unwrap_or(DEFAULT_BPF_CPU_POOL_SIZE)),
             iface_hw_addr: {
                 let iface = Iface::find_by_name(iface_name).map_err(|error| match error {
                     ifcontrol::Error(ifcontrol::ErrorKind::IfaceNotFound, _) => {
