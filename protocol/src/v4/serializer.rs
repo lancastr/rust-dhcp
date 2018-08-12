@@ -43,9 +43,9 @@ impl Message {
             SIZE_HARDWARE_ADDRESS
                 - self.client_hardware_address.as_bytes().len()
         ]); // 10 byte padding
-        cursor.put(self.server_name.as_bytes());
+        cursor.put(self.server_name.to_owned());
         cursor.put(vec![0u8; SIZE_SERVER_NAME - self.server_name.len()]); // (64 - length) byte padding
-        cursor.put(self.boot_filename.as_bytes());
+        cursor.put(self.boot_filename.to_owned());
         cursor.put(vec![0u8; SIZE_BOOT_FILENAME - self.boot_filename.len()]); // (128 - length) byte padding
         cursor.put_u32_be(MAGIC_COOKIE);
 
@@ -384,7 +384,6 @@ impl Message {
         tag: OptionTag,
         value: &Option<Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>>,
     ) -> io::Result<()> {
-
         if let Some(ref value) = value {
             if value.is_empty() {
                 return Ok(());

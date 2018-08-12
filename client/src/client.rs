@@ -305,7 +305,8 @@ where
                     );
 
                     self.send_request(request)?;
-                    self.state.transcend(current, DhcpState::SelectingSent, None);
+                    self.state
+                        .transcend(current, DhcpState::SelectingSent, None);
                 }
                 current @ DhcpState::SelectingSent => {
                     let (addr, response) = match self.stream.poll() {
@@ -326,10 +327,11 @@ where
                     };
 
                     let dhcp_message_type = validate!(response, addr);
-                    log_receive!(response, addr);
+                    log_receive!(response, addr.ip());
                     check_xid!(self.state.xid(), response.transaction_id);
                     check_message_type!(dhcp_message_type, MessageType::DhcpOffer);
-                    self.state.transcend(current, DhcpState::Requesting, Some(&response));
+                    self.state
+                        .transcend(current, DhcpState::Requesting, Some(&response));
                 }
                 current @ DhcpState::Requesting => {
                     /*
@@ -347,7 +349,8 @@ where
                     );
 
                     self.send_request(request)?;
-                    self.state.transcend(current, DhcpState::RequestingSent, None);
+                    self.state
+                        .transcend(current, DhcpState::RequestingSent, None);
                 }
                 current @ DhcpState::RequestingSent => {
                     let (addr, response) = match self.stream.poll() {
@@ -372,7 +375,7 @@ where
                     };
 
                     let dhcp_message_type = validate!(response, addr);
-                    log_receive!(response, addr);
+                    log_receive!(response, addr.ip());
                     check_xid!(self.state.xid(), response.transaction_id);
 
                     match dhcp_message_type {
@@ -388,7 +391,8 @@ where
                         }
                     }
 
-                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    self.state
+                        .transcend(current, DhcpState::Bound, Some(&response));
                     return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
 
@@ -418,7 +422,8 @@ where
                     );
 
                     self.send_request(request)?;
-                    self.state.transcend(current, DhcpState::RebootingSent, None);
+                    self.state
+                        .transcend(current, DhcpState::RebootingSent, None);
                 }
                 current @ DhcpState::RebootingSent => {
                     let (addr, response) = match self.stream.poll() {
@@ -443,7 +448,7 @@ where
                     };
 
                     let dhcp_message_type = validate!(response, addr);
-                    log_receive!(response, addr);
+                    log_receive!(response, addr.ip());
                     check_xid!(self.state.xid(), response.transaction_id);
 
                     match dhcp_message_type {
@@ -459,7 +464,8 @@ where
                         }
                     }
 
-                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    self.state
+                        .transcend(current, DhcpState::Bound, Some(&response));
                     return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
 
@@ -521,11 +527,12 @@ where
                     };
 
                     let dhcp_message_type = validate!(response, addr);
-                    log_receive!(response, addr);
+                    log_receive!(response, addr.ip());
                     check_xid!(self.state.xid(), response.transaction_id);
                     check_message_type!(dhcp_message_type, MessageType::DhcpAck);
 
-                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    self.state
+                        .transcend(current, DhcpState::Bound, Some(&response));
                     return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
                 current @ DhcpState::Rebinding => {
@@ -549,7 +556,8 @@ where
                     );
 
                     self.send_request(request)?;
-                    self.state.transcend(current, DhcpState::RebindingSent, None);
+                    self.state
+                        .transcend(current, DhcpState::RebindingSent, None);
                 }
                 current @ DhcpState::RebindingSent => {
                     let (addr, response) = match self.stream.poll() {
@@ -574,11 +582,12 @@ where
                     };
 
                     let dhcp_message_type = validate!(response, addr);
-                    log_receive!(response, addr);
+                    log_receive!(response, addr.ip());
                     check_xid!(self.state.xid(), response.transaction_id);
                     check_message_type!(dhcp_message_type, MessageType::DhcpAck);
 
-                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    self.state
+                        .transcend(current, DhcpState::Bound, Some(&response));
                     return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
             }

@@ -252,7 +252,7 @@ where
 
     /// Sends a response using OS-specific features.
     #[allow(unused)]
-    fn send(
+    fn send_response(
         &mut self,
         response: Message,
         destination: Ipv4Addr,
@@ -338,7 +338,7 @@ where
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
                             let (destination, hw_unicast) = self.destination(&request, &response);
-                            self.send(response, destination, hw_unicast)?;
+                            self.send_response(response, destination, hw_unicast)?;
                         }
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
@@ -379,13 +379,13 @@ where
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 let (destination, hw_unicast) =
                                     self.destination(&request, &response);
-                                self.send(response, destination, hw_unicast)?;
+                                self.send_response(response, destination, hw_unicast)?;
                             }
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.builder.dhcp_request_to_nak(&request, &error);
                                 let destination = Ipv4Addr::new(255, 255, 255, 255);
-                                self.send(response, destination, false)?;
+                                self.send_response(response, destination, false)?;
                             }
                         };
                         continue;
@@ -400,7 +400,7 @@ where
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 let (destination, hw_unicast) =
                                     self.destination(&request, &response);
-                                self.send(response, destination, hw_unicast)?;
+                                self.send_response(response, destination, hw_unicast)?;
                             }
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
@@ -408,7 +408,7 @@ where
                                     let response =
                                         self.builder.dhcp_request_to_nak(&request, &error);
                                     let destination = Ipv4Addr::new(255, 255, 255, 255);
-                                    self.send(response, destination, false)?;
+                                    self.send_response(response, destination, false)?;
                                 }
                                 /*
                                 RFC 2131 §4.3.2
@@ -429,7 +429,7 @@ where
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
                             let (destination, hw_unicast) = self.destination(&request, &response);
-                            self.send(response, destination, hw_unicast)?;
+                            self.send_response(response, destination, hw_unicast)?;
                         }
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
@@ -480,7 +480,7 @@ where
                     );
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
                     let (destination, hw_unicast) = self.destination(&request, &response);
-                    self.send(response, destination, hw_unicast)?;
+                    self.send_response(response, destination, hw_unicast)?;
                 }
                 _ => {}
             }

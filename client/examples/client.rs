@@ -49,13 +49,13 @@ where
                 self.0.start_send(Command::Release {
                     message: Some("Releasing".to_owned()),
                 })?;
-//                self.0.start_send(Command::Decline {
-//                    address: result.your_ip_address,
-//                    message: Some("Releasing".to_owned()),
-//                })?;
-//                self.0.start_send(Command::Inform {
-//                    address: result.your_ip_address,
-//                })?;
+                //                self.0.start_send(Command::Decline {
+                //                    address: result.your_ip_address,
+                //                    message: Some("Releasing".to_owned()),
+                //                })?;
+                //                self.0.start_send(Command::Inform {
+                //                    address: result.your_ip_address,
+                //                })?;
                 self.0.poll_complete()?;
                 break;
             }

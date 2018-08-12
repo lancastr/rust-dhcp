@@ -108,7 +108,11 @@ pub struct State {
 
 impl State {
     /// Constructs a default state.
-    pub fn new(dhcp_state: DhcpState, server_address: Option<Ipv4Addr>, is_broadcast: bool) -> Self {
+    pub fn new(
+        dhcp_state: DhcpState,
+        server_address: Option<Ipv4Addr>,
+        is_broadcast: bool,
+    ) -> Self {
         State {
             dhcp_state,
             is_broadcast,
@@ -141,41 +145,42 @@ impl State {
 
         match from {
             Init => match to {
-                Selecting => {
+                next @ Selecting => {
                     self.set_dhcp_server_id(None);
                     self.run_timer_offer();
-                    self.dhcp_state = DhcpState::Selecting;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
             Selecting => match to {
-                SelectingSent => self.dhcp_state = DhcpState::SelectingSent,
+                next @ SelectingSent => {
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
             SelectingSent => match to {
-                Selecting => self.dhcp_state = DhcpState::Selecting,
-                Requesting => {
+                next @ Selecting => self.dhcp_state = next,
+                next @ Requesting => {
                     let offer = expect!(response);
                     self.set_dhcp_server_id(Some(expect!(offer.options.dhcp_server_id)));
                     self.set_offered_address(offer.your_ip_address);
                     self.set_offered_time(expect!(offer.options.address_time));
-                    self.record_request_time();
                     self.run_timer_ack();
-                    self.dhcp_state = DhcpState::Requesting;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
             Requesting => match to {
-                RequestingSent => {
+                next @ RequestingSent => {
                     self.record_request_time();
-                    self.dhcp_state = DhcpState::RequestingSent;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
             RequestingSent => match to {
-                Init => self.dhcp_state = DhcpState::Init,
-                Requesting => self.dhcp_state = DhcpState::Requesting,
-                Bound => {
+                next @ Init => self.dhcp_state = next,
+                next @ Requesting => self.dhcp_state = next,
+                next @ Bound => {
                     let ack = expect!(response);
                     self.set_assigned_address(ack.your_ip_address);
                     self.set_times(
@@ -184,30 +189,29 @@ impl State {
                         expect!(ack.options.address_time),
                     );
                     self.run_timer_renewal();
-                    self.dhcp_state = DhcpState::Bound;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
 
             InitReboot => match to {
-                Rebooting => {
-                    self.record_request_time();
+                next @ Rebooting => {
                     self.run_timer_ack();
-                    self.dhcp_state = DhcpState::Rebooting;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
             Rebooting => match to {
-                RebootingSent => {
+                next @ RebootingSent => {
                     self.record_request_time();
-                    self.dhcp_state = DhcpState::RebootingSent;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
             RebootingSent => match to {
-                Init => self.dhcp_state = DhcpState::Init,
-                Rebooting => self.dhcp_state = DhcpState::Rebooting,
-                Bound => {
+                next @ Init => self.dhcp_state = next,
+                next @ Rebooting => self.dhcp_state = next,
+                next @ Bound => {
                     let ack = expect!(response);
                     self.set_assigned_address(ack.your_ip_address);
                     self.set_dhcp_server_id(Some(expect!(ack.options.dhcp_server_id)));
@@ -217,27 +221,27 @@ impl State {
                         expect!(ack.options.address_time),
                     );
                     self.run_timer_renewal();
-                    self.dhcp_state = DhcpState::Bound;
-                },
+                    self.dhcp_state = next;
+                }
                 _ => panic_state!(from, to),
-            }
+            },
 
             Bound => match to {
-                Renewing => {
+                next @ Renewing => {
                     self.run_timer_rebinding();
-                    self.dhcp_state = DhcpState::Renewing;
+                    self.dhcp_state = next;
                 }
                 _ => panic_state!(from, to),
-            }
+            },
             Renewing => match to {
-                RenewingSent => {
+                next @ RenewingSent => {
                     self.record_request_time();
-                    self.dhcp_state = DhcpState::RenewingSent;
+                    self.dhcp_state = next;
                 }
                 _ => panic_state!(from, to),
-            }
+            },
             RenewingSent => match to {
-                Bound => {
+                next @ Bound => {
                     let ack = expect!(response);
                     self.set_assigned_address(ack.your_ip_address);
                     self.set_times(
@@ -246,25 +250,25 @@ impl State {
                         expect!(ack.options.address_time),
                     );
                     self.run_timer_renewal();
-                    self.dhcp_state = DhcpState::Bound;
+                    self.dhcp_state = next;
                 }
-                Renewing => self.dhcp_state = DhcpState::Renewing,
-                Rebinding => {
+                next @ Renewing => self.dhcp_state = next,
+                next @ Rebinding => {
                     self.run_timer_expiration();
-                    self.dhcp_state = DhcpState::Rebinding;
+                    self.dhcp_state = next;
                 }
                 _ => panic_state!(from, to),
-            }
+            },
             Rebinding => match to {
-                RebindingSent => {
+                next @ RebindingSent => {
                     self.record_request_time();
-                    self.dhcp_state = DhcpState::RebindingSent;
+                    self.dhcp_state = next;
                 }
                 _ => panic_state!(from, to),
-            }
+            },
             RebindingSent => match to {
-                Init => self.dhcp_state = DhcpState::Init,
-                Bound => {
+                next @ Init => self.dhcp_state = next,
+                next @ Bound => {
                     let ack = expect!(response);
                     self.set_assigned_address(ack.your_ip_address);
                     self.set_times(
@@ -273,11 +277,11 @@ impl State {
                         expect!(ack.options.address_time),
                     );
                     self.run_timer_renewal();
-                    self.dhcp_state = DhcpState::Bound;
+                    self.dhcp_state = next;
                 }
-                Rebinding => self.dhcp_state = DhcpState::Rebinding,
+                next @ Rebinding => self.dhcp_state = next,
                 _ => panic_state!(from, to),
-            }
+            },
         }
     }
 

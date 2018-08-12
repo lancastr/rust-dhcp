@@ -50,10 +50,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast,
 
             client_ip_address: Ipv4Addr::new(0, 0, 0, 0),
@@ -62,8 +62,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -91,10 +91,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast,
 
             client_ip_address: Ipv4Addr::new(0, 0, 0, 0),
@@ -103,8 +103,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -130,10 +130,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast,
 
             client_ip_address: Ipv4Addr::new(0, 0, 0, 0),
@@ -142,8 +142,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -168,10 +168,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast,
 
             client_ip_address,
@@ -180,8 +180,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -204,10 +204,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast,
 
             client_ip_address,
@@ -216,8 +216,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -242,10 +242,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast: false,
 
             client_ip_address,
@@ -254,8 +254,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -281,10 +281,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootRequest,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: EUI48LEN as u8,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast: false,
 
             client_ip_address: Ipv4Addr::new(0, 0, 0, 0),
@@ -293,8 +293,8 @@ impl MessageBuilder {
             gateway_ip_address: Ipv4Addr::new(0, 0, 0, 0),
 
             client_hardware_address: self.client_hardware_address.to_owned(),
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -309,7 +309,6 @@ impl MessageBuilder {
         vec![
             OptionTag::SubnetMask as u8,
             OptionTag::DomainNameServers as u8,
-
             /*
             RFC 3442
             DHCP clients that support this option and send a parameter request

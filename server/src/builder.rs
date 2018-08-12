@@ -64,10 +64,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootReply,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: discover.hardware_address_length,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id: discover.transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast: discover.is_broadcast,
 
             client_ip_address: Ipv4Addr::new(0, 0, 0, 0),
@@ -76,8 +76,8 @@ impl MessageBuilder {
             gateway_ip_address: discover.gateway_ip_address,
 
             client_hardware_address: discover.client_hardware_address,
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -101,10 +101,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootReply,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: request.hardware_address_length,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id: request.transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast: request.is_broadcast,
 
             client_ip_address: request.client_ip_address,
@@ -113,8 +113,8 @@ impl MessageBuilder {
             gateway_ip_address: request.gateway_ip_address,
 
             client_hardware_address: request.client_hardware_address,
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -135,10 +135,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootReply,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: inform.hardware_address_length,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id: inform.transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast: inform.is_broadcast,
 
             client_ip_address: inform.client_ip_address,
@@ -147,8 +147,8 @@ impl MessageBuilder {
             gateway_ip_address: inform.gateway_ip_address,
 
             client_hardware_address: inform.client_hardware_address,
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }
@@ -166,10 +166,10 @@ impl MessageBuilder {
             operation_code: OperationCode::BootReply,
             hardware_type: HardwareType::Ethernet,
             hardware_address_length: request.hardware_address_length,
-            hardware_options: 0u8,
+            hardware_options: Default::default(),
 
             transaction_id: request.transaction_id,
-            seconds: 0u16,
+            seconds: Default::default(),
             is_broadcast: request.is_broadcast,
 
             client_ip_address: Ipv4Addr::new(0, 0, 0, 0),
@@ -178,8 +178,8 @@ impl MessageBuilder {
             gateway_ip_address: request.gateway_ip_address,
 
             client_hardware_address: request.client_hardware_address,
-            server_name: String::new(),
-            boot_filename: String::new(),
+            server_name: Default::default(),
+            boot_filename: Default::default(),
 
             options,
         }

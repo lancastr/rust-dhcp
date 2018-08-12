@@ -7,7 +7,7 @@ pub const SIZE_FLAGS: usize = 2;
 pub const SIZE_HARDWARE_ADDRESS: usize = 16;
 
 /// The `server_name` field offset in bytes.
-pub const OFFSET_SERVER_NAME: usize = 48;
+pub const OFFSET_SERVER_NAME: usize = 44;
 
 /// `server_name` size in bytes.
 pub const SIZE_SERVER_NAME: usize = 64;
@@ -18,8 +18,11 @@ pub const OFFSET_BOOT_FILENAME: usize = OFFSET_SERVER_NAME + SIZE_SERVER_NAME;
 /// `boot_filename` size in bytes.
 pub const SIZE_BOOT_FILENAME: usize = 128;
 
-/// DHCP options offset in bytes.
-pub const OFFSET_OPTIONS: usize = OFFSET_SERVER_NAME + SIZE_SERVER_NAME + SIZE_BOOT_FILENAME;
+/// DHCP options magic cookie offset in bytes.
+pub const OFFSET_MAGIC_COOKIE: usize = OFFSET_SERVER_NAME + SIZE_SERVER_NAME + SIZE_BOOT_FILENAME;
+
+/// DHCP options themselves offset in bytes.
+pub const OFFSET_OPTIONS: usize = OFFSET_MAGIC_COOKIE + ::std::mem::size_of::<u32>();
 
 /// 1 byte tag and 1 byte length before each DHCP option.
 pub const SIZE_OPTION_PREFIX: usize = 2;
