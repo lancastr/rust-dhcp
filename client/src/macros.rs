@@ -1,5 +1,28 @@
 //! Macro functions used in the `Client:poll` method.
 
+/// A panic indicates a bug in the application logic.
+macro_rules! expect (
+    ($option:expr) => (
+        $option.expect("A bug in the Option setting logic")
+    );
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! log_send(
+    ($message:expr, $destination:expr) => (
+        info!("Sending {} to {}", expect!($message.options.dhcp_message_type), $destination);
+        debug!("{}", $message);
+    );
+);
+
+/// Just to move some code from the overwhelmed `poll` method.
+macro_rules! log_receive(
+    ($message:expr, $source:expr) => (
+        info!("Received {} from {}", expect!($message.options.dhcp_message_type), $source);
+        debug!("{}", $message);
+    );
+);
+
 /// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send (
     ($socket:expr, $address:expr, $message:expr) => (
@@ -20,31 +43,6 @@ macro_rules! poll_complete (
                 continue;
             },
         }
-    );
-);
-
-/// Is safe after calling the `validate_or_continue` macro.
-///
-/// A panic indicates a bug in the application logic.
-macro_rules! expect (
-    ($option:expr) => (
-        $option.expect("A bug in the Option setting logic")
-    );
-);
-
-/// Just to move some code from the overwhelmed `poll` method.
-macro_rules! log_send(
-    ($message:expr, $destination:expr) => (
-        info!("Sending {} to {}", expect!($message.options.dhcp_message_type), $destination.ip());
-        debug!("{}", $message);
-    );
-);
-
-/// Just to move some code from the overwhelmed `poll` method.
-macro_rules! log_receive(
-    ($message:expr, $source:expr) => (
-        info!("Received {} from {}", expect!($message.options.dhcp_message_type), $source.ip());
-        debug!("{}", $message);
     );
 );
 
@@ -156,5 +154,12 @@ macro_rules! poll_forthon (
         } else {
             panic!("A bug in the timer setting logic");
         }
+    );
+);
+
+/// Panic if there is a bug in the state changing logic.
+macro_rules! panic_state(
+    ($from:expr, $to:expr) => (
+        panic!("Invalid state transcension from {} to {}");
     );
 );

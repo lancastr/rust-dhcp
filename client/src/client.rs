@@ -29,6 +29,34 @@ pub struct Configuration {
     pub routers: Option<Vec<Ipv4Addr>>,
     pub domain_name_servers: Option<Vec<Ipv4Addr>>,
     pub static_routes: Option<Vec<(Ipv4Addr, Ipv4Addr)>>,
+    pub classless_static_routes: Option<Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>>,
+}
+
+impl Configuration {
+    pub fn from_response(mut response: Message) -> Self {
+        /*
+        RFC 3442
+        If the DHCP server returns both a Classless Static Routes option and
+        a Router option, the DHCP client MUST ignore the Router option.
+        Similarly, if the DHCP server returns both a Classless Static Routes
+        option and a Static Routes option, the DHCP client MUST ignore the
+        Static Routes option.
+        */
+        if response.options.classless_static_routes.is_some() {
+            response.options.routers = None;
+            response.options.static_routes = None;
+        }
+
+        Configuration {
+            your_ip_address: response.your_ip_address,
+            server_ip_address: response.server_ip_address,
+            subnet_mask: response.options.subnet_mask,
+            routers: response.options.routers,
+            domain_name_servers: response.options.domain_name_servers,
+            static_routes: response.options.static_routes,
+            classless_static_routes: response.options.classless_static_routes,
+        }
+    }
 }
 
 /// The commands used for `Sink` to send `DHCPRELEASE`, `DHCPDECLINE` and `DHCPINFORM` messages.
@@ -124,6 +152,36 @@ where
             None
         };
 
+        let client_id = client_id.unwrap_or(client_hardware_address.as_bytes().to_vec());
+
+        let builder = MessageBuilder::new(client_hardware_address, client_id, hostname);
+
+        let mut options = RequestOptions {
+            address_request,
+            address_time,
+        };
+
+        let dhcp_state = match client_address {
+            Some(ip) => {
+                options.address_request = Some(ip);
+                DhcpState::InitReboot
+            }
+            None => DhcpState::Init,
+        };
+
+        let state = State::new(dhcp_state, server_address, false);
+
+        Client {
+            stream,
+            sink,
+            builder,
+            state,
+            options,
+        }
+    }
+
+    /// Chooses the packet destination address according to the RFC 2131 rules.
+    fn destination(&mut self) -> Ipv4Addr {
         /*
         RFC 2131 §4.4.4
         The DHCP client broadcasts DhcpDiscover, DhcpRequest and DHCPINFORM
@@ -140,47 +198,22 @@ where
         messages sent to the IP address of a known DHCP server, the DHCP
         client reverts to using the IP broadcast address.
         */
-        let (destination, is_broadcast) = if let Some(ip) = server_address {
-            (ip, false)
+
+        if let Some(dhcp_server_id) = self.state.dhcp_server_id() {
+            dhcp_server_id
         } else {
-            /*
-            RFC 2131 §4.1
-            DHCP messages broadcast by a client prior to that client obtaining
-            its IP address must have the source address field in the IP header
-            set to 0.
-
-            Note: must be done with the external user provided Stream+Sink abstraction.
-            */
-            (Ipv4Addr::new(255, 255, 255, 255), true)
-        };
-        let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
-
-        let client_id = client_id.unwrap_or(client_hardware_address.as_bytes().to_vec());
-
-        let message_builder = MessageBuilder::new(client_hardware_address, client_id, hostname);
-
-        let mut options = RequestOptions {
-            address_request,
-            address_time,
-        };
-
-        let dhcp_state = match client_address {
-            Some(ip) => {
-                options.address_request = Some(ip);
-                DhcpState::InitReboot
-            }
-            None => DhcpState::Init,
-        };
-
-        let state = State::new(destination, dhcp_state, is_broadcast);
-
-        Client {
-            stream,
-            sink,
-            builder: message_builder,
-            state,
-            options,
+            Ipv4Addr::new(255, 255, 255, 255)
         }
+    }
+
+    /// Sends a request.
+    fn send_request(&mut self, request: Message) -> io::Result<()> {
+        let destination = self.destination();
+        log_send!(request, destination);
+
+        let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
+        start_send!(self.sink, destination, request);
+        Ok(())
     }
 }
 
@@ -239,12 +272,13 @@ where
     ///                             |          |----------------------------+
     ///                              ----------
     ///
+    /// [RFC 2131](https://tools.ietf.org/html/rfc2131)
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         loop {
             poll_complete!(self.sink);
 
             match self.state.dhcp_state() {
-                DhcpState::Init => {
+                current @ DhcpState::Init => {
                     /*
                     RFC 2131 §4.4.1
                     The client begins in INIT state and forms a DhcpDiscover message.
@@ -252,9 +286,9 @@ where
                     the 'requested IP address' and 'IP address lease time' options.
                     */
 
-                    self.state.init_to_selecting();
+                    self.state.transcend(current, DhcpState::Selecting, None);
                 }
-                DhcpState::Selecting => {
+                current @ DhcpState::Selecting => {
                     /*
                     RFC 2131 §4.4.1
                     If the parameters are acceptable, the client records the address of
@@ -263,18 +297,17 @@ where
                     DhcpRequest broadcast message.
                     */
 
-                    if !self.state.is_discover_sent() {
-                        let request = self.builder.discover(
-                            self.state.xid(),
-                            self.state.is_broadcast(),
-                            self.options.address_request,
-                            self.options.address_time,
-                        );
-                        log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
-                        self.state.set_discover_sent(true);
-                    }
+                    let request = self.builder.discover(
+                        self.state.xid(),
+                        self.state.is_broadcast(),
+                        self.options.address_request,
+                        self.options.address_time,
+                    );
 
+                    self.send_request(request)?;
+                    self.state.transcend(current, DhcpState::SelectingSent, None);
+                }
+                current @ DhcpState::SelectingSent => {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(Some(data))) => data,
                         Ok(Async::Ready(None)) => {
@@ -283,7 +316,7 @@ where
                         }
                         Ok(Async::NotReady) => {
                             poll_backoff!(self.state.timer_offer);
-                            self.state.set_discover_sent(false);
+                            self.state.transcend(current, DhcpState::Selecting, None);
                             continue;
                         }
                         Err(error) => {
@@ -296,12 +329,7 @@ where
                     log_receive!(response, addr);
                     check_xid!(self.state.xid(), response.transaction_id);
                     check_message_type!(dhcp_message_type, MessageType::DhcpOffer);
-
-                    self.state.selecting_to_requesting(
-                        response.your_ip_address,
-                        expect!(response.options.address_time),
-                        Some(expect!(response.options.dhcp_server_id)),
-                    );
+                    self.state.transcend(current, DhcpState::Requesting, Some(&response));
                 }
                 current @ DhcpState::Requesting => {
                     /*
@@ -310,19 +338,18 @@ where
                     the client is initialized and moves to BOUND state.
                     */
 
-                    if !self.state.is_request_sent() {
-                        let request = self.builder.request_selecting(
-                            self.state.xid(),
-                            self.state.is_broadcast(),
-                            self.state.offered_address(),
-                            Some(self.state.offered_time()),
-                            expect!(self.state.dhcp_server_id()),
-                        );
-                        log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
-                        self.state.set_request_sent(true);
-                    }
+                    let request = self.builder.request_selecting(
+                        self.state.xid(),
+                        self.state.is_broadcast(),
+                        self.state.offered_address(),
+                        Some(self.state.offered_time()),
+                        expect!(self.state.dhcp_server_id()),
+                    );
 
+                    self.send_request(request)?;
+                    self.state.transcend(current, DhcpState::RequestingSent, None);
+                }
+                current @ DhcpState::RequestingSent => {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(Some(data))) => data,
                         Ok(Async::Ready(None)) => {
@@ -330,14 +357,12 @@ where
                             continue;
                         }
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Init = poll_backoff!(
+                            let next = poll_backoff!(
                                 self.state.timer_ack,
-                                DhcpState::Selecting,
+                                DhcpState::Requesting,
                                 DhcpState::Init
-                            ) {
-                                self.state.requesting_to_init();
-                            }
-                            self.state.set_request_sent(false);
+                            );
+                            self.state.transcend(current, next, None);
                             continue;
                         }
                         Err(error) => {
@@ -353,7 +378,7 @@ where
                     match dhcp_message_type {
                         MessageType::DhcpNak => {
                             warn!("Got {} in {} state", dhcp_message_type, current);
-                            self.state.requesting_to_init();
+                            self.state.transcend(current, DhcpState::Init, None);
                             continue;
                         }
                         MessageType::DhcpAck => {}
@@ -363,23 +388,11 @@ where
                         }
                     }
 
-                    self.state.requesting_to_bound(
-                        response.your_ip_address,
-                        response.options.renewal_time,
-                        response.options.rebinding_time,
-                        expect!(response.options.address_time),
-                    );
-                    return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address: response.your_ip_address,
-                        server_ip_address: response.server_ip_address,
-                        subnet_mask: response.options.subnet_mask,
-                        routers: response.options.routers,
-                        domain_name_servers: response.options.domain_name_servers,
-                        static_routes: response.options.static_routes,
-                    })));
+                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
 
-                DhcpState::InitReboot => {
+                current @ DhcpState::InitReboot => {
                     /*
                     RFC 2131 §4.4.2
                     The client begins in INIT-REBOOT state and sends a DhcpRequest
@@ -387,7 +400,7 @@ where
                     'requested IP address' option in the DhcpRequest message.
                     */
 
-                    self.state.initreboot_to_rebooting();
+                    self.state.transcend(current, DhcpState::Rebooting, None);
                 }
                 current @ DhcpState::Rebooting => {
                     /*
@@ -397,18 +410,17 @@ where
                     initialized and moves to BOUND state.
                     */
 
-                    if !self.state.is_request_sent() {
-                        let request = self.builder.request_init_reboot(
-                            self.state.xid(),
-                            self.state.is_broadcast(),
-                            expect!(self.options.address_request),
-                            self.options.address_time,
-                        );
-                        log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
-                        self.state.set_request_sent(true);
-                    }
+                    let request = self.builder.request_init_reboot(
+                        self.state.xid(),
+                        self.state.is_broadcast(),
+                        expect!(self.options.address_request),
+                        self.options.address_time,
+                    );
 
+                    self.send_request(request)?;
+                    self.state.transcend(current, DhcpState::RebootingSent, None);
+                }
+                current @ DhcpState::RebootingSent => {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(Some(data))) => data,
                         Ok(Async::Ready(None)) => {
@@ -416,14 +428,12 @@ where
                             continue;
                         }
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Init = poll_backoff!(
+                            let next = poll_backoff!(
                                 self.state.timer_ack,
                                 DhcpState::InitReboot,
                                 DhcpState::Init
-                            ) {
-                                self.state.rebooting_to_init();
-                            }
-                            self.state.set_request_sent(false);
+                            );
+                            self.state.transcend(current, next, None);
                             continue;
                         }
                         Err(error) => {
@@ -439,7 +449,7 @@ where
                     match dhcp_message_type {
                         MessageType::DhcpNak => {
                             warn!("Got {} in {} state", dhcp_message_type, current);
-                            self.state.rebooting_to_init();
+                            self.state.transcend(current, DhcpState::Init, None);
                             continue;
                         }
                         MessageType::DhcpAck => {}
@@ -449,24 +459,11 @@ where
                         }
                     }
 
-                    self.state.rebooting_to_bound(
-                        response.your_ip_address,
-                        response.options.renewal_time,
-                        response.options.rebinding_time,
-                        expect!(response.options.address_time),
-                        Some(expect!(response.options.dhcp_server_id)),
-                    );
-                    return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address: response.your_ip_address,
-                        server_ip_address: response.server_ip_address,
-                        subnet_mask: response.options.subnet_mask,
-                        routers: response.options.routers,
-                        domain_name_servers: response.options.domain_name_servers,
-                        static_routes: response.options.static_routes,
-                    })));
+                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
 
-                DhcpState::Bound => {
+                current @ DhcpState::Bound => {
                     /*
                     RFC 2131 §4.4.5
                     At time T1 the client moves to RENEWING state and sends (via unicast)
@@ -479,9 +476,9 @@ where
                     */
 
                     poll_delay!(self.state.timer_renewal);
-                    self.state.bound_to_renewing();
+                    self.state.transcend(current, DhcpState::Renewing, None);
                 }
-                DhcpState::Renewing => {
+                current @ DhcpState::Renewing => {
                     /*
                     RFC 2131 §4.4.5
                     If no DHCPACK arrives before time T2, the client moves to REBINDING
@@ -491,18 +488,17 @@ where
                     identifier' in the DHCPREQUEST message.
                     */
 
-                    if !self.state.is_request_sent() {
-                        let request = self.builder.request_renew(
-                            self.state.xid(),
-                            self.state.is_broadcast(),
-                            self.state.assigned_address(),
-                            self.options.address_time,
-                        );
-                        log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
-                        self.state.set_request_sent(true);
-                    }
+                    let request = self.builder.request_renew(
+                        self.state.xid(),
+                        self.state.is_broadcast(),
+                        self.state.assigned_address(),
+                        self.options.address_time,
+                    );
 
+                    self.send_request(request)?;
+                    self.state.transcend(current, DhcpState::RenewingSent, None);
+                }
+                current @ DhcpState::RenewingSent => {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(Some(data))) => data,
                         Ok(Async::Ready(None)) => {
@@ -510,14 +506,12 @@ where
                             continue;
                         }
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Rebinding = poll_forthon!(
+                            let next = poll_forthon!(
                                 self.state.timer_rebinding,
                                 DhcpState::Renewing,
                                 DhcpState::Rebinding
-                            ) {
-                                self.state.renewing_to_rebinding();
-                            }
-                            self.state.set_request_sent(false);
+                            );
+                            self.state.transcend(current, next, None);
                             continue;
                         }
                         Err(error) => {
@@ -531,22 +525,10 @@ where
                     check_xid!(self.state.xid(), response.transaction_id);
                     check_message_type!(dhcp_message_type, MessageType::DhcpAck);
 
-                    self.state.renewing_to_bound(
-                        response.your_ip_address,
-                        response.options.renewal_time,
-                        response.options.rebinding_time,
-                        expect!(response.options.address_time),
-                    );
-                    return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address: response.your_ip_address,
-                        server_ip_address: response.server_ip_address,
-                        subnet_mask: response.options.subnet_mask,
-                        routers: response.options.routers,
-                        domain_name_servers: response.options.domain_name_servers,
-                        static_routes: response.options.static_routes,
-                    })));
+                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
-                DhcpState::Rebinding => {
+                current @ DhcpState::Rebinding => {
                     /*
                     RFC 2131 §4.4.5
                     If the lease expires before the client receives a DHCPACK, the client
@@ -559,18 +541,17 @@ where
                     address and SHOULD notify the local users of the problem.
                     */
 
-                    if !self.state.is_request_sent() {
-                        let request = self.builder.request_renew(
-                            self.state.xid(),
-                            self.state.is_broadcast(),
-                            self.state.assigned_address(),
-                            self.options.address_time,
-                        );
-                        log_send!(request, self.state.destination());
-                        start_send!(self.sink, self.state.destination(), request);
-                        self.state.set_request_sent(true);
-                    }
+                    let request = self.builder.request_renew(
+                        self.state.xid(),
+                        self.state.is_broadcast(),
+                        self.state.assigned_address(),
+                        self.options.address_time,
+                    );
 
+                    self.send_request(request)?;
+                    self.state.transcend(current, DhcpState::RebindingSent, None);
+                }
+                current @ DhcpState::RebindingSent => {
                     let (addr, response) = match self.stream.poll() {
                         Ok(Async::Ready(Some(data))) => data,
                         Ok(Async::Ready(None)) => {
@@ -578,15 +559,12 @@ where
                             continue;
                         }
                         Ok(Async::NotReady) => {
-                            if let DhcpState::Init = poll_forthon!(
+                            let next = poll_forthon!(
                                 self.state.timer_expiration,
                                 DhcpState::Rebinding,
                                 DhcpState::Init
-                            ) {
-                                warn!("Unable to extend the expired lease!");
-                                self.state.rebinding_to_init();
-                            }
-                            self.state.set_request_sent(false);
+                            );
+                            self.state.transcend(current, next, None);
                             continue;
                         }
                         Err(error) => {
@@ -600,20 +578,8 @@ where
                     check_xid!(self.state.xid(), response.transaction_id);
                     check_message_type!(dhcp_message_type, MessageType::DhcpAck);
 
-                    self.state.rebinding_to_bound(
-                        response.your_ip_address,
-                        response.options.renewal_time,
-                        response.options.rebinding_time,
-                        expect!(response.options.address_time),
-                    );
-                    return Ok(Async::Ready(Some(Configuration {
-                        your_ip_address: response.your_ip_address,
-                        server_ip_address: response.server_ip_address,
-                        subnet_mask: response.options.subnet_mask,
-                        routers: response.options.routers,
-                        domain_name_servers: response.options.domain_name_servers,
-                        static_routes: response.options.static_routes,
-                    })));
+                    self.state.transcend(current, DhcpState::Bound, Some(&response));
+                    return Ok(Async::Ready(Some(Configuration::from_response(response))));
                 }
             }
         }

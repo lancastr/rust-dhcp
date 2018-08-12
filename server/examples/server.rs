@@ -1,5 +1,5 @@
 //! Run this with administrator privileges where it is required
-//! in order to bind the DHCP server socket to its port 67 or use the ARP API.
+//! in order to bind the DHCP server socket to its port 67 or use other OS-specific features.
 
 #[macro_use]
 extern crate log;

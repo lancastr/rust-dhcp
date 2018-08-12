@@ -308,8 +308,19 @@ impl MessageBuilder {
     fn parameter_list() -> Vec<u8> {
         vec![
             OptionTag::SubnetMask as u8,
-            OptionTag::Routers as u8,
             OptionTag::DomainNameServers as u8,
+
+            /*
+            RFC 3442
+            DHCP clients that support this option and send a parameter request
+            list MAY also request the Static Routes option, for compatibility
+            with older servers that don't support Classless Static Routes. The
+            Classless Static Routes option code MUST appear in the parameter
+            request list prior to both the Router option code and the Static
+            Routes option code, if present.
+            */
+            OptionTag::ClasslessStaticRoutes as u8,
+            OptionTag::Routers as u8,
             OptionTag::StaticRoutes as u8,
         ]
     }

@@ -49,13 +49,13 @@ where
                 self.0.start_send(Command::Release {
                     message: Some("Releasing".to_owned()),
                 })?;
-                //                self.0.start_send(Command::Decline {
-                //                    address: result.your_ip_address,
-                //                    message: Some("Releasing".to_owned()),
-                //                })?;
-                //                self.0.start_send(Command::Inform {
-                //                    address: result.your_ip_address,
-                //                })?;
+//                self.0.start_send(Command::Decline {
+//                    address: result.your_ip_address,
+//                    message: Some("Releasing".to_owned()),
+//                })?;
+//                self.0.start_send(Command::Inform {
+//                    address: result.your_ip_address,
+//                })?;
                 self.0.poll_complete()?;
                 break;
             }
@@ -76,16 +76,16 @@ fn main() {
     ).expect("Socket binding error")
         .split();
 
-    let server_address = Some(Ipv4Addr::new(192, 168, 0, 1));
-    let client_address = Some(Ipv4Addr::new(192, 168, 0, 2));
-    let address_request = None;
+    let server_address = Some(Ipv4Addr::new(192, 168, 0, 2));
+    let client_address = None;
+    let address_request = Some(Ipv4Addr::new(192, 168, 0, 60));
     let address_time = None;
 
     let client = SuperClient(
         Client::new(
             stream,
             sink,
-            MacAddress::new([0x4c, 0xcc, 0x6a, 0xbc, 0x87, 0x9d]),
+            MacAddress::new([0x00, 0x0c, 0x29, 0x13, 0x0e, 0x37]),
             None,
             None,
             server_address,

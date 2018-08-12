@@ -194,15 +194,33 @@ impl MessageBuilder {
         for tag in parameter_list {
             match (*tag).into() {
                 OptionTag::SubnetMask => options.subnet_mask = Some(self.subnet_mask),
+                OptionTag::DomainNameServers => if self.domain_name_servers.len() > 0 {
+                    options.domain_name_servers = Some(self.domain_name_servers.to_owned());
+                },
+
+                /*
+                RFC 3442
+                Many clients may not implement the Classless Static Routes option.
+                DHCP server administrators should therefore configure their DHCP
+                servers to send both a Router option and a Classless Static Routes
+                option, and should specify the default router(s) both in the Router
+                option and in the Classless Static Routes option.
+
+                When a DHCP client requests the Classless Static Routes option and
+                also requests either or both of the Router option and the Static
+                Routes option, and the DHCP server is sending Classless Static Routes
+                options to that client, the server SHOULD NOT include the Router or
+                Static Routes options.
+                */
+                OptionTag::ClasslessStaticRoutes => if self.classless_static_routes.len() > 0 {
+                    options.classless_static_routes = Some(self.classless_static_routes.to_owned())
+                },
                 OptionTag::Routers => if (!parameter_list
                     .contains(&(OptionTag::ClasslessStaticRoutes as u8))
                     || self.classless_static_routes.len() == 0)
                     && self.routers.len() > 0
                 {
                     options.routers = Some(self.routers.to_owned());
-                },
-                OptionTag::DomainNameServers => if self.domain_name_servers.len() > 0 {
-                    options.domain_name_servers = Some(self.domain_name_servers.to_owned());
                 },
                 OptionTag::StaticRoutes => if (!parameter_list
                     .contains(&(OptionTag::ClasslessStaticRoutes as u8))
@@ -211,9 +229,7 @@ impl MessageBuilder {
                 {
                     options.static_routes = Some(self.static_routes.to_owned())
                 },
-                OptionTag::ClasslessStaticRoutes => if self.classless_static_routes.len() > 0 {
-                    options.classless_static_routes = Some(self.classless_static_routes.to_owned())
-                },
+
                 _ => continue,
             }
         }

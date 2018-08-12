@@ -18,7 +18,7 @@ pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<sup
     Ok(Command::new("netsh")
         .arg("interface")
         .arg("ip")
-        .arg("add")
+        .arg("set")
         .arg("neighbors")
         .arg(iface)
         .arg(ip.to_string())

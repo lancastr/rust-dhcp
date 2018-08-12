@@ -1,6 +1,6 @@
 //! Macro functions used in the `Server:poll` method.
 
-/// The passed `Option` must be already validated in `dhcp_protocol::Message::validate` method.
+/// A panic indicates a bug in the application logic.
 macro_rules! expect (
     ($option:expr) => (
         $option.expect("A bug in DHCP message validation")
@@ -10,7 +10,7 @@ macro_rules! expect (
 /// Just to move some code from the overwhelmed `poll` method.
 macro_rules! log_receive(
     ($message:expr, $source:expr) => (
-        info!("Received {} from {}", expect!($message.options.dhcp_message_type), $source.ip());
+        info!("Received {} from {}", expect!($message.options.dhcp_message_type), $source);
         debug!("{}", $message);
     );
 );

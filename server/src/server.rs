@@ -293,8 +293,8 @@ where
             }
             poll_complete!(self.socket);
             let (addr, request) = poll!(self.socket);
-            log_receive!(request, addr);
-            let dhcp_message_type = validate!(request, addr);
+            log_receive!(request, addr.ip());
+            let dhcp_message_type = validate!(request, addr.ip());
 
             if let Some(dhcp_server_id) = request.options.dhcp_server_id {
                 if dhcp_server_id != self.server_ip_address {
