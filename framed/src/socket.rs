@@ -3,8 +3,7 @@
 use std::net::SocketAddr;
 
 use futures::StartSend;
-use net2::UdpBuilder;
-use tokio::{io, net::UdpSocket, prelude::*, reactor::Handle};
+use tokio::{io, net::UdpSocket, prelude::*};
 
 use dhcp_protocol::*;
 
@@ -33,23 +32,7 @@ impl DhcpFramed {
     /// # Errors
     /// `io::Error` on unsuccessful socket building or binding.
     #[allow(unused_variables)]
-    pub fn new(addr: SocketAddr, reuse_addr: bool, reuse_port: bool) -> io::Result<Self> {
-        let socket = UdpBuilder::new_v4()?;
-        if reuse_addr {
-            socket.reuse_address(true)?;
-        }
-        #[cfg(target_os = "linux")]
-        {
-            if reuse_port {
-                use net2::unix::UnixUdpBuilderExt;
-                socket.reuse_port(true)?;
-            }
-        }
-
-        let socket = socket.bind(addr)?;
-        let socket = UdpSocket::from_std(socket, &Handle::default())?;
-        socket.set_broadcast(true)?;
-
+    pub fn new(socket: UdpSocket) -> io::Result<Self> {
         Ok(DhcpFramed {
             socket,
             buf_read: vec![0u8; BUFFER_READ_CAPACITY],

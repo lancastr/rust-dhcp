@@ -17,6 +17,7 @@ use bpf::BpfData;
 use builder::MessageBuilder;
 use database::{Database, Error::LeaseInvalid};
 use storage::Storage;
+use tokio::net::UdpSocket;
 
 /// Some options like `cpu_pool_size` are OS-specific, so the builder pattern is required.
 pub struct ServerBuilder<S>
@@ -173,7 +174,10 @@ where
         bpf_num_threads_size: Option<usize>,
     ) -> io::Result<Self> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), DHCP_PORT_SERVER);
-        let socket = DhcpFramed::new(addr, false, false)?;
+        let socket = UdpSocket::bind(&addr)?;
+        socket.set_broadcast(true)?;
+
+        let socket = DhcpFramed::new(socket)?;
         let hostname = hostname::get_hostname();
 
         let builder = MessageBuilder::new(
