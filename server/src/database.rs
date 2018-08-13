@@ -213,8 +213,7 @@ where
         }
 
         // address allocation case 4, giaddr stuff not implemented
-        let address = self
-            .get_dynamic_available()?
+        let address = self.get_dynamic_available()?
             .ok_or(Error::DynamicPoolExhausted)?;
         let lease_time = self.offer(&address, client_id, lease_time, false)?;
         let offer = Offer {

@@ -160,8 +160,7 @@ impl Message {
         Self::put_opt_u8(
             &mut cursor,
             DhcpMessageType,
-            &self
-                .options
+            &self.options
                 .dhcp_message_type
                 .as_ref()
                 .map(|v| v.clone() as u8),
