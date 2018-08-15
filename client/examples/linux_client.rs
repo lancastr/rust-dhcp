@@ -109,7 +109,7 @@ fn main() {
     Iface::find_by_name(&iface_str)
         .expect("Iface not found")
         .bind_to_device(&socket)
-        .expect("Failed to bind socket to device")();
+        .expect("Failed to bind socket to device");
 
     let (sink, stream) = DhcpFramed::new(socket)
         .expect("Socket binding error")
