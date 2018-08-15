@@ -64,6 +64,7 @@ macro_rules! start_send (
             },
             Err(error) => {
                 warn!("Socket error: {}", error);
+                return Err(error);
             },
         }
     );

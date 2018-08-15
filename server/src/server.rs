@@ -4,8 +4,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use hostname;
 use tokio::{io, prelude::*};
-#[cfg(target_os = "windows")]
-use tokio_process::OutputAsync;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use dhcp_arp;
@@ -146,9 +144,9 @@ where
     builder: MessageBuilder,
     /// The DHCP database using a persistent storage object.
     database: Database<S>,
-    /// The asynchronous `netsh` process used to add ARP entries.
+    /// The asynchronous `netsh` processes used to work with ARP entries.
     #[cfg(target_os = "windows")]
-    arp: Option<(Option<OutputAsync>, Option<OutputAsync>)>,
+    arp: Option<dhcp_arp::Arp>,
     /// The object encapsulating BPF functionality.
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     bpf_data: BpfData,
