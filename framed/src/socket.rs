@@ -50,7 +50,7 @@ impl Stream for DhcpFramed {
     type Error = io::Error;
 
     /// Returns `Ok(Async::Ready(Some(_)))` on successful
-    /// both read from socket and decoding the message.    ///
+    /// both read from socket and decoding the message.
     /// Returns `Ok(Async::Ready(None))` a on parsing error.
     ///
     /// # Errors
@@ -81,12 +81,13 @@ impl Sink for DhcpFramed {
 
         let (addr, (message, max_size)) = item;
         let amount = message.to_bytes(&mut self.buf_write, max_size)?;
+        println!("{:?}", &self.buf_write[..amount]);
         self.pending = Some((addr, amount));
 
         Ok(AsyncSink::Ready)
     }
 
-    /// Returns `Ok(Async::Ready(()))` on successful sending.    ///
+    /// Returns `Ok(Async::Ready(()))` on successful sending.
     /// Returns `Ok(Async::NotReady)` if the socket is not ready for sending.
     ///
     /// # Errors

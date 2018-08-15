@@ -24,15 +24,25 @@ fn main() {
     let iface_name = "Ethernet".to_string();
 
     let mut classless_static_routes = Vec::new();
-    for i in 1..=1 {
-        for j in 0..=64 {
-            classless_static_routes.push((
-                Ipv4Addr::new(192, 168, i, j),
-                Ipv4Addr::new(255, 255, 255, 255),
-                Ipv4Addr::new(192, 168, i, j),
-            ));
-        }
-    }
+//    for _i in 0..=0 {
+//        for _j in 0..=0 {
+//            classless_static_routes.push((
+//                Ipv4Addr::new(192, 168, 0, 0),
+//                Ipv4Addr::new(255, 255, 0, 0),
+//                Ipv4Addr::new(192, 168, 0, 1),
+//            ));
+//        }
+//    }
+    classless_static_routes.push((
+        Ipv4Addr::new(192, 168, 0, 0),
+        Ipv4Addr::new(255, 255, 0, 0),
+        Ipv4Addr::new(192, 168, 0, 1),
+    ));
+    classless_static_routes.push((
+        Ipv4Addr::new(0, 0, 0, 0),
+        Ipv4Addr::new(0, 0, 0, 0),
+        Ipv4Addr::new(192, 168, 0, 1),
+    ));
 
     #[allow(unused_mut)]
     let mut builder = dhcp_server::ServerBuilder::new(
@@ -51,8 +61,7 @@ fn main() {
         vec![Ipv4Addr::new(192, 168, 0, 1)],
         vec![Ipv4Addr::new(192, 168, 0, 1)],
         vec![
-            (Ipv4Addr::new(0, 0, 0, 0), Ipv4Addr::new(192, 168, 0, 1)),
-            (Ipv4Addr::new(10, 0, 0, 0), Ipv4Addr::new(192, 168, 0, 1)),
+            (Ipv4Addr::new(192, 168, 0, 0), Ipv4Addr::new(192, 168, 0, 1)),
         ],
         classless_static_routes,
     );
