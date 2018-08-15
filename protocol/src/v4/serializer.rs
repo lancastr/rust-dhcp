@@ -34,12 +34,12 @@ const SIZE_OPTION_MAIN_AFFIXES: usize = SIZE_OPTION_AFFIXES + SIZE_OPTION_OVERLO
 /// The maximal option size.
 const SIZE_OPTION_MAX: usize = 255;
 
-/// The main cursor position in the cursors array.
-const CURSOR_INDEX_MAIN: usize = 0;
 /// The boot filename cursor position in the cursors array.
-const CURSOR_INDEX_FILE: usize = 1;
+const CURSOR_INDEX_FILE: usize = 0;
 /// The server name cursor position in the cursors array.
-const CURSOR_INDEX_SNAME: usize = 2;
+const CURSOR_INDEX_SNAME: usize = 1;
+/// The main cursor position in the cursors array.
+const CURSOR_INDEX_MAIN: usize = 2;
 /// The cursors array size.
 const CURSOR_INDEX_TOTAL: usize = 3;
 
@@ -68,13 +68,13 @@ impl Message {
 
         // cursors are initialized in the way they must be filled
         let mut cursors: [io::Cursor<&mut [u8]>; CURSOR_INDEX_TOTAL] = [
-            io::Cursor::new(unsafe { &mut *(dst as *mut [u8]) }),
             io::Cursor::new(unsafe {
                 &mut *(&mut dst[OFFSET_BOOT_FILENAME..OFFSET_MAGIC_COOKIE] as *mut [u8])
             }),
             io::Cursor::new(unsafe {
                 &mut *(&mut dst[OFFSET_SERVER_NAME..OFFSET_BOOT_FILENAME] as *mut [u8])
             }),
+            io::Cursor::new(unsafe { &mut *(dst as *mut [u8]) }),
         ];
 
         check_remaining!(cursors[CURSOR_INDEX_MAIN], OFFSET_OPTIONS);
@@ -769,7 +769,10 @@ impl Message {
                 }
             }
             if j < descriptors.len() {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "No more space left"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "No more space left",
+                ));
             }
         }
         Ok(())

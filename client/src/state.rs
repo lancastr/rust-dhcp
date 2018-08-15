@@ -244,6 +244,7 @@ impl State {
                 next @ Bound => {
                     let ack = expect!(response);
                     self.set_assigned_address(ack.your_ip_address);
+                    self.set_dhcp_server_id(Some(expect!(ack.options.dhcp_server_id)));
                     self.set_times(
                         ack.options.renewal_time,
                         ack.options.rebinding_time,
@@ -254,6 +255,7 @@ impl State {
                 }
                 next @ Renewing => self.dhcp_state = next,
                 next @ Rebinding => {
+                    self.set_dhcp_server_id(None);
                     self.run_timer_expiration();
                     self.dhcp_state = next;
                 }
@@ -271,6 +273,7 @@ impl State {
                 next @ Bound => {
                     let ack = expect!(response);
                     self.set_assigned_address(ack.your_ip_address);
+                    self.set_dhcp_server_id(Some(expect!(ack.options.dhcp_server_id)));
                     self.set_times(
                         ack.options.renewal_time,
                         ack.options.rebinding_time,

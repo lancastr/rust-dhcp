@@ -23,27 +23,6 @@ fn main() {
     let server_ip_address = Ipv4Addr::new(192, 168, 0, 2);
     let iface_name = "Ethernet".to_string();
 
-    let mut classless_static_routes = Vec::new();
-//    for _i in 0..=0 {
-//        for _j in 0..=0 {
-//            classless_static_routes.push((
-//                Ipv4Addr::new(192, 168, 0, 0),
-//                Ipv4Addr::new(255, 255, 0, 0),
-//                Ipv4Addr::new(192, 168, 0, 1),
-//            ));
-//        }
-//    }
-    classless_static_routes.push((
-        Ipv4Addr::new(192, 168, 0, 0),
-        Ipv4Addr::new(255, 255, 0, 0),
-        Ipv4Addr::new(192, 168, 0, 1),
-    ));
-    classless_static_routes.push((
-        Ipv4Addr::new(0, 0, 0, 0),
-        Ipv4Addr::new(0, 0, 0, 0),
-        Ipv4Addr::new(192, 168, 0, 1),
-    ));
-
     #[allow(unused_mut)]
     let mut builder = dhcp_server::ServerBuilder::new(
         server_ip_address,
@@ -60,17 +39,25 @@ fn main() {
         Ipv4Addr::new(255, 255, 0, 0),
         vec![Ipv4Addr::new(192, 168, 0, 1)],
         vec![Ipv4Addr::new(192, 168, 0, 1)],
+        vec![(Ipv4Addr::new(192, 168, 0, 0), Ipv4Addr::new(192, 168, 0, 1))],
         vec![
-            (Ipv4Addr::new(192, 168, 0, 0), Ipv4Addr::new(192, 168, 0, 1)),
+            (
+                Ipv4Addr::new(192, 168, 0, 0),
+                Ipv4Addr::new(255, 255, 0, 0),
+                Ipv4Addr::new(192, 168, 0, 1),
+            ),
+            (
+                Ipv4Addr::new(0, 0, 0, 0),
+                Ipv4Addr::new(0, 0, 0, 0),
+                Ipv4Addr::new(192, 168, 0, 1),
+            ),
         ],
-        classless_static_routes,
     );
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     {
         builder.with_bpf_num_threads(8);
     }
     let server = builder.finish().expect("Server creating error");
-
     let future = server.map_err(|error| error!("Error: {}", error));
 
     info!(

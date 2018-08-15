@@ -17,13 +17,26 @@ impl From<io::Error> for Error {
 }
 
 pub(crate) fn add(hwaddr: MacAddress, ip: Ipv4Addr, iface: String) -> Result<super::Arp, Error> {
-    Ok(Command::new("netsh")
-        .arg("interface")
-        .arg("ip")
-        .arg("set")
-        .arg("neighbors")
-        .arg(iface)
-        .arg(ip.to_string())
-        .arg(hwaddr.to_string(MacAddressFormat::Canonical))
-        .output_async())
+    Ok((
+        Some(
+            Command::new("netsh")
+                .arg("interface")
+                .arg("ip")
+                .arg("delete")
+                .arg("neighbors")
+                .arg(iface.to_owned())
+                .output_async(),
+        ),
+        Some(
+            Command::new("netsh")
+                .arg("interface")
+                .arg("ip")
+                .arg("add")
+                .arg("neighbors")
+                .arg(iface.to_owned())
+                .arg(ip.to_string())
+                .arg(hwaddr.to_string(MacAddressFormat::Canonical))
+                .output_async(),
+        ),
+    ))
 }

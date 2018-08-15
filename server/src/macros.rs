@@ -64,7 +64,6 @@ macro_rules! start_send (
             },
             Err(error) => {
                 warn!("Socket error: {}", error);
-                return Err(error);
             },
         }
     );
@@ -87,29 +86,46 @@ macro_rules! poll_complete (
 /// Just to move some code from the overwhelmed `poll` method.
 #[cfg(target_os = "windows")]
 macro_rules! poll_arp (
-    ($process:expr) => (
+    ($arp:expr) => (
         let mut ready = false;
-        if let Some(ref mut process) = $process {
-            let output = match process.poll() {
-                Ok(Async::Ready(output)) => {
-                    ready = true;
-                    output
-                },
-                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(error) => {
-                    warn!("ARP process future error: {}", error);
-                    continue;
-                },
-            };
-            if !output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-                if stdout != "The object already exists." {
-                    error!("ARP process error: {}", stdout);
+        if let Some(ref mut arp) = $arp {
+            if let Some(ref mut delete) = arp.0 {
+                match delete.poll() {
+                    Ok(Async::Ready(_)) => {
+                        trace!("The netsh delete process finished.");
+                    },
+                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                    Err(error) => {
+                        warn!("netsh delete process future error: {}", error);
+                        continue;
+                    },
                 }
             }
+            arp.0 = None;
+            if let Some(ref mut add) = arp.1 {
+                let output = match add.poll() {
+                    Ok(Async::Ready(output)) => {
+                        trace!("The netsh add process finished.");
+                        ready = true;
+                        output
+                    },
+                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                    Err(error) => {
+                        warn!("netsh add process future error: {}", error);
+                        continue;
+                    },
+                };
+                if !output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+                    if stdout != "The object already exists." {
+                        error!("ARP process error: {}", stdout);
+                    }
+                }
+            }
+            arp.1 = None;
         }
         if ready {
-            $process = None;
+            $arp = None;
         }
     );
 );

@@ -81,7 +81,6 @@ impl Sink for DhcpFramed {
 
         let (addr, (message, max_size)) = item;
         let amount = message.to_bytes(&mut self.buf_write, max_size)?;
-        println!("{:?}", &self.buf_write[..amount]);
         self.pending = Some((addr, amount));
 
         Ok(AsyncSink::Ready)

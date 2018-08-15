@@ -70,17 +70,8 @@ where
                 try_ready!(self.inner.poll()).expect("The client returned None but it must not");
             info!("{:?}", result);
             self.counter += 1;
-            if self.counter == 5 {
-                self.inner.start_send(Command::Release {
-                    message: Some("Releasing".to_owned()),
-                })?;
-                //                self.0.start_send(Command::Decline {
-                //                    address: result.your_ip_address,
-                //                    message: Some("Releasing".to_owned()),
-                //                })?;
-                //                self.0.start_send(Command::Inform {
-                //                    address: result.your_ip_address,
-                //                })?;
+            if self.counter >= 5 {
+                self.inner.start_send(Command::Release { message: None })?;
                 self.inner.poll_complete()?;
                 break;
             }
@@ -94,7 +85,7 @@ fn main() {
     std::env::set_var("RUST_LOG", "client=trace,dhcp_client=trace");
     env_logger::init();
 
-    let iface_str = "enp0s3";
+    let iface_str = "ens33";
 
     let socket = UdpBuilder::new_v4().unwrap();
 

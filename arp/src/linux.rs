@@ -1,8 +1,7 @@
 //! The Linux implementation using SIOCSARP syscall.
 
 use std::{
-    cmp,
-    mem,
+    cmp, mem,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     ptr,
 };
