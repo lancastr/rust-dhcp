@@ -10,4 +10,6 @@ extern crate net2;
 
 extern crate dhcp_protocol;
 
-pub use socket::DhcpFramed;
+pub use socket::{
+    DhcpFramed, DhcpSinkItem, DhcpStreamItem, BUFFER_READ_CAPACITY, BUFFER_WRITE_CAPACITY,
+};

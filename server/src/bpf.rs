@@ -81,11 +81,12 @@ impl BpfData {
         source: &Ipv4Addr,
         destination: &Ipv4Addr,
         message: Message,
+        max_size: Option<u16>,
     ) -> io::Result<()> {
         trace!("Sending to {} via BPF", destination);
 
         let mut payload = vec![0u8; DEFAULT_PACKET_BUFFER_SIZE];
-        let amount = message.to_bytes(payload.as_mut())?;
+        let amount = message.to_bytes(payload.as_mut(), max_size)?;
         let packet = Self::ethernet_packet(
             self.iface_hw_addr.to_owned(),
             message.client_hardware_address.to_owned(),

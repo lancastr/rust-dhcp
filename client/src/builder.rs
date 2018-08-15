@@ -14,6 +14,8 @@ pub struct MessageBuilder {
     client_id: Vec<u8>,
     /// The optional machine hostname.
     hostname: Option<String>,
+    /// The optional maximum DHCP message size the client will accept.
+    max_message_size: Option<u16>,
 }
 
 impl MessageBuilder {
@@ -22,11 +24,13 @@ impl MessageBuilder {
         client_hardware_address: MacAddress,
         client_id: Vec<u8>,
         hostname: Option<String>,
+        max_message_size: Option<u16>,
     ) -> Self {
         MessageBuilder {
             client_hardware_address,
             client_id,
             hostname,
+            max_message_size,
         }
     }
 
@@ -42,6 +46,7 @@ impl MessageBuilder {
         self.append_default_options(&mut options);
 
         options.dhcp_message_type = Some(MessageType::DhcpDiscover);
+        options.dhcp_max_message_size = self.max_message_size;
         options.parameter_list = Some(Self::parameter_list());
         options.address_request = address_request;
         options.address_time = address_time;
@@ -82,6 +87,7 @@ impl MessageBuilder {
         self.append_default_options(&mut options);
 
         options.dhcp_message_type = Some(MessageType::DhcpRequest);
+        options.dhcp_max_message_size = self.max_message_size;
         options.dhcp_server_id = Some(dhcp_server_id);
         options.parameter_list = Some(Self::parameter_list());
         options.address_request = Some(address_request);
@@ -122,6 +128,7 @@ impl MessageBuilder {
         self.append_default_options(&mut options);
 
         options.dhcp_message_type = Some(MessageType::DhcpRequest);
+        options.dhcp_max_message_size = self.max_message_size;
         options.parameter_list = Some(Self::parameter_list());
         options.address_request = Some(address_request);
         options.address_time = address_time;
@@ -161,6 +168,7 @@ impl MessageBuilder {
         self.append_default_options(&mut options);
 
         options.dhcp_message_type = Some(MessageType::DhcpRequest);
+        options.dhcp_max_message_size = self.max_message_size;
         options.parameter_list = Some(Self::parameter_list());
         options.address_time = address_time;
 
@@ -198,6 +206,7 @@ impl MessageBuilder {
         self.append_default_options(&mut options);
 
         options.dhcp_message_type = Some(MessageType::DhcpInform);
+        options.dhcp_max_message_size = self.max_message_size;
         options.parameter_list = Some(Self::parameter_list());
 
         Message {

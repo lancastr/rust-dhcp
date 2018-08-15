@@ -9,9 +9,9 @@ use tokio::{io, net::UdpSocket, prelude::*, reactor::Handle};
 use dhcp_protocol::*;
 
 /// Must be enough to decode all the options.
-const BUFFER_READ_CAPACITY: usize = 8192;
+pub const BUFFER_READ_CAPACITY: usize = 8192;
 /// Must be enough to encode all the options.
-const BUFFER_WRITE_CAPACITY: usize = 8192;
+pub const BUFFER_WRITE_CAPACITY: usize = 8192;
 
 /// The modified version of the `tokio::UdpFramed`.
 ///
@@ -26,6 +26,9 @@ pub struct DhcpFramed {
     /// Stores the destination address and the number of bytes to send.
     pending: Option<(SocketAddr, usize)>,
 }
+
+pub type DhcpStreamItem = (SocketAddr, Message);
+pub type DhcpSinkItem = (SocketAddr, (Message, Option<u16>));
 
 impl DhcpFramed {
     /// Binds to `addr` and returns a `Stream+Sink` UDP socket abstraction.
@@ -60,7 +63,7 @@ impl DhcpFramed {
 }
 
 impl Stream for DhcpFramed {
-    type Item = (SocketAddr, Message);
+    type Item = DhcpStreamItem;
     type Error = io::Error;
 
     /// Returns `Ok(Async::Ready(Some(_)))` on successful
@@ -79,11 +82,11 @@ impl Stream for DhcpFramed {
 }
 
 impl Sink for DhcpFramed {
-    type SinkItem = (SocketAddr, Message);
+    type SinkItem = DhcpSinkItem;
     type SinkError = io::Error;
 
     /// Returns `Ok(AsyncSink::Ready)` on successful sending or
-    /// storing the data in order to send it when the socket is ready.    ///
+    /// storing the data in order to send it when the socket is ready.
     /// Returns `Ok(AsyncSink::NotReady(item))` if there is pending data.
     ///
     /// # Errors
@@ -93,8 +96,8 @@ impl Sink for DhcpFramed {
             return Ok(AsyncSink::NotReady(item));
         }
 
-        let (addr, message) = item;
-        let amount = message.to_bytes(&mut self.buf_write)?;
+        let (addr, (message, max_size)) = item;
+        let amount = message.to_bytes(&mut self.buf_write, max_size)?;
         self.pending = Some((addr, amount));
 
         Ok(AsyncSink::Ready)

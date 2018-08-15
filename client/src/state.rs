@@ -313,6 +313,7 @@ impl State {
         self.assigned_address.to_owned()
     }
 
+    #[allow(dead_code)]
     fn set_broadcast(&mut self, value: bool) {
         self.is_broadcast = value;
     }

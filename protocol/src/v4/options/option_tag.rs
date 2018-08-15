@@ -1,7 +1,7 @@
 //! DHCP option tags module.
 
 /// DHCP options codes.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OptionTag {
     Unknown = -1,
     Pad = 0,

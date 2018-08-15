@@ -1,3 +1,5 @@
+//! The OS-polymorphic ARP interface.
+
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
 mod os;

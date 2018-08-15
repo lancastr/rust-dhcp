@@ -1,6 +1,6 @@
 //! DHCP message validation module.
 
-use super::{options::MessageType, Message};
+use super::{constants::SIZE_MESSAGE_MINIMAL, options::MessageType, Message};
 
 /// The error type returned by `Message::validate`.
 #[derive(Fail, Debug)]
@@ -34,6 +34,12 @@ impl Message {
             }
             Some(dhcp_message_type) => dhcp_message_type,
         };
+
+        if let Some(dhcp_max_message_size) = message.options.dhcp_max_message_size {
+            if (dhcp_max_message_size as usize) < SIZE_MESSAGE_MINIMAL {
+                return Err(Error::Validation("DHCP maximal message size is too low"));
+            }
+        }
 
         match dhcp_message_type {
             // client generated packets section

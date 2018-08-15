@@ -23,6 +23,17 @@ fn main() {
     let server_ip_address = Ipv4Addr::new(192, 168, 0, 2);
     let iface_name = "Ethernet".to_string();
 
+    let mut classless_static_routes = Vec::new();
+    for i in 1..=1 {
+        for j in 0..=64 {
+            classless_static_routes.push((
+                Ipv4Addr::new(192, 168, i, j),
+                Ipv4Addr::new(255, 255, 255, 255),
+                Ipv4Addr::new(192, 168, i, j),
+            ));
+        }
+    }
+
     #[allow(unused_mut)]
     let mut builder = dhcp_server::ServerBuilder::new(
         server_ip_address,
@@ -43,43 +54,7 @@ fn main() {
             (Ipv4Addr::new(0, 0, 0, 0), Ipv4Addr::new(192, 168, 0, 1)),
             (Ipv4Addr::new(10, 0, 0, 0), Ipv4Addr::new(192, 168, 0, 1)),
         ],
-        vec![
-            (
-                Ipv4Addr::new(0, 0, 0, 0),
-                Ipv4Addr::new(0, 0, 0, 0),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-            (
-                Ipv4Addr::new(10, 0, 0, 0),
-                Ipv4Addr::new(255, 0, 0, 0),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-            (
-                Ipv4Addr::new(10, 0, 0, 0),
-                Ipv4Addr::new(255, 255, 255, 0),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-            (
-                Ipv4Addr::new(10, 17, 0, 0),
-                Ipv4Addr::new(255, 255, 0, 0),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-            (
-                Ipv4Addr::new(10, 27, 129, 0),
-                Ipv4Addr::new(255, 255, 255, 0),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-            (
-                Ipv4Addr::new(10, 229, 0, 128),
-                Ipv4Addr::new(255, 255, 255, 128),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-            (
-                Ipv4Addr::new(10, 198, 122, 47),
-                Ipv4Addr::new(255, 255, 255, 255),
-                Ipv4Addr::new(192, 168, 0, 1),
-            ),
-        ],
+        classless_static_routes,
     );
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     {

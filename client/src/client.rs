@@ -74,11 +74,14 @@ pub enum Command {
     },
 }
 
+type DhcpStreamItem = (SocketAddr, Message);
+type DhcpSinkItem = (SocketAddr, (Message, Option<u16>));
+
 /// The struct implementing the `Future` trait.
 pub struct Client<I, O>
 where
-    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
-    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+    I: Stream<Item = DhcpStreamItem, Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = DhcpSinkItem, SinkError = io::Error> + Send + Sync,
 {
     stream: I,
     sink: O,
@@ -89,8 +92,8 @@ where
 
 impl<I, O> Client<I, O>
 where
-    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
-    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+    I: Stream<Item = DhcpStreamItem, Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = DhcpSinkItem, SinkError = io::Error> + Send + Sync,
 {
     /// Creates a client future.
     ///
@@ -127,13 +130,16 @@ where
     /// * `address_request`
     /// The requested network address.
     /// Set it if you want to request a specific network address.
-    /// If not set, the server will give you either
+    /// If not set, a server will give you either
     /// your current or previous address, or an address from its dynamic pool.
     ///
     /// * `address_time`
     /// The requested lease time.
-    /// If not set, the server will determine the lease time by itself.
+    /// If not set, a server will choose the lease time by itself.
     /// The server may lease the address for different amount of time if it decides so.
+    ///
+    /// * `max_message_size`
+    /// The maximum DHCP message size.
     ///
     pub fn new(
         stream: I,
@@ -145,6 +151,7 @@ where
         client_address: Option<Ipv4Addr>,
         address_request: Option<Ipv4Addr>,
         address_time: Option<u32>,
+        max_message_size: Option<u16>,
     ) -> Self {
         let hostname: Option<String> = if hostname.is_none() {
             hostname::get_hostname()
@@ -154,7 +161,12 @@ where
 
         let client_id = client_id.unwrap_or(client_hardware_address.as_bytes().to_vec());
 
-        let builder = MessageBuilder::new(client_hardware_address, client_id, hostname);
+        let builder = MessageBuilder::new(
+            client_hardware_address,
+            client_id,
+            hostname,
+            max_message_size,
+        );
 
         let mut options = RequestOptions {
             address_request,
@@ -212,15 +224,15 @@ where
         log_send!(request, destination);
 
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_SERVER);
-        start_send!(self.sink, destination, request);
+        start_send!(self.sink, destination, (request, None));
         Ok(())
     }
 }
 
 impl<I, O> Stream for Client<I, O>
 where
-    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
-    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+    I: Stream<Item = DhcpStreamItem, Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = DhcpSinkItem, SinkError = io::Error> + Send + Sync,
 {
     type Item = Configuration;
     type Error = io::Error;
@@ -597,8 +609,8 @@ where
 
 impl<I, O> Sink for Client<I, O>
 where
-    I: Stream<Item = (SocketAddr, Message), Error = io::Error> + Send + Sync,
-    O: Sink<SinkItem = (SocketAddr, Message), SinkError = io::Error> + Send + Sync,
+    I: Stream<Item = DhcpStreamItem, Error = io::Error> + Send + Sync,
+    O: Sink<SinkItem = DhcpSinkItem, SinkError = io::Error> + Send + Sync,
 {
     type SinkItem = Command;
     type SinkError = io::Error;
@@ -669,7 +681,7 @@ where
         };
 
         log_send!(request, destination);
-        match self.sink.start_send((destination, request)) {
+        match self.sink.start_send((destination, (request, None))) {
             Ok(AsyncSink::Ready) => Ok(AsyncSink::Ready),
             Ok(AsyncSink::NotReady(_item)) => Ok(AsyncSink::NotReady(command)),
             Err(error) => Err(error),

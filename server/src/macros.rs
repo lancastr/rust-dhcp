@@ -56,8 +56,8 @@ macro_rules! validate (
 
 /// By design the pending message must be flushed before sending the next one.
 macro_rules! start_send (
-    ($socket:expr, $destination:expr, $message:expr) => (
-        match $socket.start_send(($destination, $message)) {
+    ($socket:expr, $destination:expr, $message:expr, $max_size:expr) => (
+        match $socket.start_send(($destination, ($message, $max_size))) {
             Ok(AsyncSink::Ready) => {},
             Ok(AsyncSink::NotReady(_)) => {
                 panic!("Must wait for poll_complete first");

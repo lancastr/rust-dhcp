@@ -4,223 +4,523 @@ use std::{io, mem, net::Ipv4Addr};
 
 use bytes::{Buf, BufMut};
 
-use super::{constants::*, options::OptionTag, Message};
+use super::{
+    constants::*,
+    options::{OptionTag, Overload as OverloadEnum},
+    Message,
+};
 
 /// Checks if there is enough space in buffer to put a value.
 macro_rules! check_remaining(
     ($cursor:expr, $distance:expr) => (
         if $cursor.remaining() < $distance {
-            println!("{} < {}", $cursor.remaining(), $distance);
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Buffer is too small"));
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "No more space left"));
         }
     )
 );
 
+/// The tag octet and the length octet.
+const SIZE_OPTION_PREFIX: usize = 2;
+/// The end octet which may occur after any option.
+const SIZE_OPTION_SUFFIX: usize = 1;
+/// Both of the above.
+const SIZE_OPTION_AFFIXES: usize = SIZE_OPTION_PREFIX + SIZE_OPTION_SUFFIX;
+
+/// The overload option which is written last by the main cursor.
+const SIZE_OPTION_OVERLOAD: usize = mem::size_of::<u8>() * 3;
+/// The above and the required space for the `overload` option, which is written last.
+const SIZE_OPTION_MAIN_AFFIXES: usize = SIZE_OPTION_AFFIXES + SIZE_OPTION_OVERLOAD;
+
+/// The maximal option size.
+const SIZE_OPTION_MAX: usize = 255;
+
+/// The main cursor position in the cursors array.
+const CURSOR_INDEX_MAIN: usize = 0;
+/// The boot filename cursor position in the cursors array.
+const CURSOR_INDEX_FILE: usize = 1;
+/// The server name cursor position in the cursors array.
+const CURSOR_INDEX_SNAME: usize = 2;
+/// The cursors array size.
+const CURSOR_INDEX_TOTAL: usize = 3;
+
 impl Message {
     /// DHCP message serialization.
     ///
+    /// Options encoded with `put_opt_*` methods called with the `?`
+    /// operator are mandatory and throw an error on unsuccessful write.
+    /// Options encoded with `put_opt_*` methods called without the `?` operator are optional
+    /// and are written to the packet only if there is enough space left.
+    /// The order of options and behavior of the encoder may be changed in the future.
+    ///
+    /// If `max_size` is specified, `dst` is truncated to it.
+    ///
     /// # Errors
     /// `io::Error` if the buffer is too small.
-    pub fn to_bytes(&self, dst: &mut [u8]) -> io::Result<usize> {
+    pub fn to_bytes(&self, dst: &mut [u8], max_size: Option<u16>) -> io::Result<usize> {
         use OptionTag::*;
 
-        let mut cursor = io::Cursor::new(dst);
-        check_remaining!(cursor, OFFSET_OPTIONS);
-        cursor.put_u8(self.operation_code as u8);
-        cursor.put_u8(self.hardware_type as u8);
-        cursor.put_u8(self.hardware_address_length);
-        cursor.put_u8(self.hardware_options);
-        cursor.put_u32_be(self.transaction_id);
-        cursor.put_u16_be(self.seconds);
-        cursor.put_u16_be(if self.is_broadcast { 0x0001 } else { 0x0000 });
-        cursor.put_u32_be(u32::from(self.client_ip_address));
-        cursor.put_u32_be(u32::from(self.your_ip_address));
-        cursor.put_u32_be(u32::from(self.server_ip_address));
-        cursor.put_u32_be(u32::from(self.gateway_ip_address));
-        cursor.put(self.client_hardware_address.as_bytes()); // 6 byte MAC-48
-        cursor.put(vec![
+        // the slice is truncated to the maximal client message size
+        let dst = if let Some(max_size) = max_size {
+            &mut dst[..((max_size as usize) - SIZE_HEADER_IP - SIZE_HEADER_UDP)]
+        } else {
+            dst
+        };
+
+        // cursors are initialized in the way they must be filled
+        let mut cursors: [io::Cursor<&mut [u8]>; CURSOR_INDEX_TOTAL] = [
+            io::Cursor::new(unsafe { &mut *(dst as *mut [u8]) }),
+            io::Cursor::new(unsafe {
+                &mut *(&mut dst[OFFSET_BOOT_FILENAME..OFFSET_MAGIC_COOKIE] as *mut [u8])
+            }),
+            io::Cursor::new(unsafe {
+                &mut *(&mut dst[OFFSET_SERVER_NAME..OFFSET_BOOT_FILENAME] as *mut [u8])
+            }),
+        ];
+
+        check_remaining!(cursors[CURSOR_INDEX_MAIN], OFFSET_OPTIONS);
+        cursors[CURSOR_INDEX_MAIN].put_u8(self.operation_code as u8);
+        cursors[CURSOR_INDEX_MAIN].put_u8(self.hardware_type as u8);
+        cursors[CURSOR_INDEX_MAIN].put_u8(self.hardware_address_length);
+        cursors[CURSOR_INDEX_MAIN].put_u8(self.hardware_options);
+        cursors[CURSOR_INDEX_MAIN].put_u32_be(self.transaction_id);
+        cursors[CURSOR_INDEX_MAIN].put_u16_be(self.seconds);
+        cursors[CURSOR_INDEX_MAIN].put_u16_be(if self.is_broadcast { 0x0001 } else { 0x0000 });
+        cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.client_ip_address));
+        cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.your_ip_address));
+        cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.server_ip_address));
+        cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.gateway_ip_address));
+        cursors[CURSOR_INDEX_MAIN].put(self.client_hardware_address.as_bytes()); // 6 byte MAC-48
+        cursors[CURSOR_INDEX_MAIN].put(vec![
             0u8;
             SIZE_HARDWARE_ADDRESS
                 - self.client_hardware_address.as_bytes().len()
         ]); // 10 byte padding
-        cursor.put(self.server_name.to_owned());
-        cursor.put(vec![0u8; SIZE_SERVER_NAME - self.server_name.len()]); // (64 - length) byte padding
-        cursor.put(self.boot_filename.to_owned());
-        cursor.put(vec![0u8; SIZE_BOOT_FILENAME - self.boot_filename.len()]); // (128 - length) byte padding
-        cursor.put_u32_be(MAGIC_COOKIE);
+        cursors[CURSOR_INDEX_MAIN].put(&self.server_name);
+        cursors[CURSOR_INDEX_MAIN].put(vec![0u8; SIZE_SERVER_NAME - self.server_name.len()]); // (64 - length) byte padding
+        cursors[CURSOR_INDEX_MAIN].put(&self.boot_filename);
+        cursors[CURSOR_INDEX_MAIN].put(vec![0u8; SIZE_BOOT_FILENAME - self.boot_filename.len()]); // (128 - length) byte padding
+        cursors[CURSOR_INDEX_MAIN].put_u32_be(MAGIC_COOKIE);
 
-        Self::put_opt_ipv4(&mut cursor, SubnetMask, &self.options.subnet_mask)?;
-        Self::put_opt_u32(&mut cursor, TimeOffset, &self.options.time_offset)?;
-        Self::put_opt_vec_ipv4(&mut cursor, Routers, &self.options.routers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, TimeServers, &self.options.time_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, NameServers, &self.options.name_servers)?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            DomainNameServers,
-            &self.options.domain_name_servers,
-        )?;
-        Self::put_opt_vec_ipv4(&mut cursor, LogServers, &self.options.log_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, QuotesServers, &self.options.quotes_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, LprServers, &self.options.lpr_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, ImpressServers, &self.options.impress_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, RlpServers, &self.options.rlp_servers)?;
-        Self::put_opt_string(&mut cursor, Hostname, &self.options.hostname)?;
-        Self::put_opt_u16(&mut cursor, BootFileSize, &self.options.boot_file_size)?;
-        Self::put_opt_string(&mut cursor, MeritDumpFile, &self.options.merit_dump_file)?;
-        Self::put_opt_string(&mut cursor, DomainName, &self.options.domain_name)?;
-        Self::put_opt_ipv4(&mut cursor, SwapServer, &self.options.swap_server)?;
-        Self::put_opt_string(&mut cursor, RootPath, &self.options.root_path)?;
-        Self::put_opt_string(&mut cursor, ExtensionsPath, &self.options.extensions_path)?;
-        Self::put_opt_u8(&mut cursor, ForwardOnOff, &self.options.forward_on_off)?;
+        // the most important and required options are encoded first
         Self::put_opt_u8(
-            &mut cursor,
-            NonLocalSourceRouteOnOff,
-            &self.options.non_local_source_route_on_off,
-        )?;
-        Self::put_opt_vec_ipv4_pairs(&mut cursor, PolicyFilters, &self.options.policy_filters)?;
-        Self::put_opt_u16(
-            &mut cursor,
-            MaxDatagramReassemblySize,
-            &self.options.max_datagram_reassembly_size,
-        )?;
-        Self::put_opt_u8(&mut cursor, DefaultIpTtl, &self.options.default_ip_ttl)?;
-        Self::put_opt_u32(&mut cursor, MtuTimeout, &self.options.mtu_timeout)?;
-        Self::put_opt_vec_u16(&mut cursor, MtuPlateau, &self.options.mtu_plateau)?;
-        Self::put_opt_u16(&mut cursor, MtuInterface, &self.options.mtu_interface)?;
-        Self::put_opt_u8(&mut cursor, MtuSubnet, &self.options.mtu_subnet)?;
-        Self::put_opt_ipv4(
-            &mut cursor,
-            BroadcastAddress,
-            &self.options.broadcast_address,
-        )?;
-        Self::put_opt_u8(&mut cursor, MaskRecovery, &self.options.mask_recovery)?;
-        Self::put_opt_u8(&mut cursor, MaskSupplier, &self.options.mask_supplier)?;
-        Self::put_opt_u8(
-            &mut cursor,
-            PerformRouterDiscovery,
-            &self.options.perform_router_discovery,
-        )?;
-        Self::put_opt_ipv4(
-            &mut cursor,
-            RouterSolicitationAddress,
-            &self.options.router_solicitation_address,
-        )?;
-        Self::put_opt_vec_ipv4_pairs(&mut cursor, StaticRoutes, &self.options.static_routes)?;
-        Self::put_opt_u8(
-            &mut cursor,
-            TrailerEncapsulation,
-            &self.options.trailer_encapsulation,
-        )?;
-        Self::put_opt_u32(&mut cursor, ArpTimeout, &self.options.arp_timeout)?;
-        Self::put_opt_u8(
-            &mut cursor,
-            EthernetEncapsulation,
-            &self.options.ethernet_encapsulation,
-        )?;
-        Self::put_opt_u8(&mut cursor, DefaultTcpTtl, &self.options.default_tcp_ttl)?;
-        Self::put_opt_u32(&mut cursor, KeepaliveTime, &self.options.keepalive_time)?;
-        Self::put_opt_u8(&mut cursor, KeepaliveData, &self.options.keepalive_data)?;
-        Self::put_opt_string(&mut cursor, NisDomain, &self.options.nis_domain)?;
-        Self::put_opt_vec_ipv4(&mut cursor, NisServers, &self.options.nis_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, NtpServers, &self.options.ntp_servers)?;
-        Self::put_opt_vec(&mut cursor, VendorSpecific, &self.options.vendor_specific)?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            NetbiosNameServers,
-            &self.options.netbios_name_servers,
-        )?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            NetbiosDistributionServers,
-            &self.options.netbios_distribution_servers,
-        )?;
-        Self::put_opt_u8(
-            &mut cursor,
-            NetbiosNodeType,
-            &self.options.netbios_node_type,
-        )?;
-        Self::put_opt_string(&mut cursor, NetbiosScope, &self.options.netbios_scope)?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            XWindowFontServers,
-            &self.options.x_window_font_servers,
-        )?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            XWindowManagerServers,
-            &self.options.x_window_manager_servers,
-        )?;
-        Self::put_opt_ipv4(&mut cursor, AddressRequest, &self.options.address_request)?;
-        Self::put_opt_u32(&mut cursor, AddressTime, &self.options.address_time)?;
-        Self::put_opt_u8(
-            &mut cursor,
-            Overload,
-            &self.options.overload.as_ref().map(|v| v.clone() as u8),
-        )?;
-        Self::put_opt_u8(
-            &mut cursor,
+            &mut cursors[CURSOR_INDEX_MAIN],
             DhcpMessageType,
-            &self
-                .options
-                .dhcp_message_type
-                .as_ref()
-                .map(|v| v.clone() as u8),
+            &self.options.dhcp_message_type.to_owned().map(|v| v as u8),
         )?;
-        Self::put_opt_ipv4(&mut cursor, DhcpServerId, &self.options.dhcp_server_id)?;
-        Self::put_opt_vec(&mut cursor, ParameterList, &self.options.parameter_list)?;
-        Self::put_opt_string(&mut cursor, DhcpMessage, &self.options.dhcp_message)?;
         Self::put_opt_u16(
-            &mut cursor,
+            &mut cursors[CURSOR_INDEX_MAIN],
             DhcpMaxMessageSize,
             &self.options.dhcp_max_message_size,
         )?;
-        Self::put_opt_u32(&mut cursor, RenewalTime, &self.options.renewal_time)?;
-        Self::put_opt_u32(&mut cursor, RebindingTime, &self.options.rebinding_time)?;
-        Self::put_opt_vec(&mut cursor, ClassId, &self.options.class_id)?;
-        Self::put_opt_vec(&mut cursor, ClientId, &self.options.client_id)?;
-        Self::put_opt_vec(
-            &mut cursor,
-            NetwareIpDomain,
-            &self.options.netware_ip_domain,
+        Self::put_opt_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            DhcpServerId,
+            &self.options.dhcp_server_id,
+        )?;
+        Self::put_opt_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            AddressRequest,
+            &self.options.address_request,
+        )?;
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            AddressTime,
+            &self.options.address_time,
         )?;
         Self::put_opt_vec(
-            &mut cursor,
-            NetwareIpOption,
-            &self.options.netware_ip_option,
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ParameterList,
+            &self.options.parameter_list,
         )?;
-        Self::put_opt_string(&mut cursor, NisDomainName, &self.options.nis_v3_domain_name)?;
-        Self::put_opt_vec_ipv4(&mut cursor, NisServerAddress, &self.options.nis_v3_servers)?;
-        Self::put_opt_string(&mut cursor, ServerName, &self.options.server_name)?;
-        Self::put_opt_string(&mut cursor, BootfileName, &self.options.bootfile_name)?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            HomeAgentAddresses,
-            &self.options.home_agent_addresses,
+        Self::put_opt_vec(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ClientId,
+            &self.options.client_id,
         )?;
-        Self::put_opt_vec_ipv4(&mut cursor, SmtpServers, &self.options.smtp_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, Pop3Servers, &self.options.pop3_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, NntpServers, &self.options.nntp_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, WwwServers, &self.options.www_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, FingerServers, &self.options.finger_servers)?;
-        Self::put_opt_vec_ipv4(&mut cursor, IrcServers, &self.options.irc_servers)?;
-        Self::put_opt_vec_ipv4(
-            &mut cursor,
-            StreetTalkServers,
-            &self.options.street_talk_servers,
-        )?;
-        Self::put_opt_vec_ipv4(&mut cursor, StdaServers, &self.options.stda_servers)?;
 
+        // the mandatory implemented network configuration options are encoded next
+        Self::put_opt_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            SubnetMask,
+            &self.options.subnet_mask,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            DomainNameServers,
+            &self.options.domain_name_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            Routers,
+            &self.options.routers,
+        )?;
+        Self::put_opt_vec_ipv4_pairs(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            StaticRoutes,
+            &self.options.static_routes,
+        )?;
+
+        // the splittable options are encoded after, leaving space for the 'overload' option
         Self::put_opt_classless_static_routes(
-            &mut cursor,
+            &mut cursors,
             ClasslessStaticRoutes,
             &self.options.classless_static_routes,
         )?;
 
-        check_remaining!(cursor, mem::size_of::<u8>());
-        cursor.put_u8(End as u8);
-        Ok(cursor.position() as usize)
+        // the overload options is written last by the main cursor
+        let overload = if cursors[CURSOR_INDEX_FILE].position() > 0
+            && cursors[CURSOR_INDEX_SNAME].position() > 0
+        {
+            Some(OverloadEnum::Both)
+        } else if cursors[CURSOR_INDEX_FILE].position() > 0 {
+            Some(OverloadEnum::File)
+        } else if cursors[CURSOR_INDEX_SNAME].position() > 0 {
+            Some(OverloadEnum::Sname)
+        } else {
+            None
+        };
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            Overload,
+            &overload.map(|v| v as u8),
+        )?;
+
+        // some helpful and optional options are encoded next
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            RenewalTime,
+            &self.options.renewal_time,
+        )?;
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            RebindingTime,
+            &self.options.rebinding_time,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            Hostname,
+            &self.options.hostname,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            DhcpMessage,
+            &self.options.dhcp_message,
+        )?;
+
+        // unimplemented options are encoded next
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            TimeOffset,
+            &self.options.time_offset,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            TimeServers,
+            &self.options.time_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NameServers,
+            &self.options.name_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            LogServers,
+            &self.options.log_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            QuotesServers,
+            &self.options.quotes_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            LprServers,
+            &self.options.lpr_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ImpressServers,
+            &self.options.impress_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            RlpServers,
+            &self.options.rlp_servers,
+        )?;
+        Self::put_opt_u16(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            BootFileSize,
+            &self.options.boot_file_size,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MeritDumpFile,
+            &self.options.merit_dump_file,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            DomainName,
+            &self.options.domain_name,
+        )?;
+        Self::put_opt_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            SwapServer,
+            &self.options.swap_server,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            RootPath,
+            &self.options.root_path,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ExtensionsPath,
+            &self.options.extensions_path,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ForwardOnOff,
+            &self.options.forward_on_off,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NonLocalSourceRouteOnOff,
+            &self.options.non_local_source_route_on_off,
+        )?;
+        Self::put_opt_vec_ipv4_pairs(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            PolicyFilters,
+            &self.options.policy_filters,
+        )?;
+        Self::put_opt_u16(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MaxDatagramReassemblySize,
+            &self.options.max_datagram_reassembly_size,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            DefaultIpTtl,
+            &self.options.default_ip_ttl,
+        )?;
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MtuTimeout,
+            &self.options.mtu_timeout,
+        )?;
+        Self::put_opt_vec_u16(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MtuPlateau,
+            &self.options.mtu_plateau,
+        )?;
+        Self::put_opt_u16(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MtuInterface,
+            &self.options.mtu_interface,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MtuSubnet,
+            &self.options.mtu_subnet,
+        )?;
+        Self::put_opt_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            BroadcastAddress,
+            &self.options.broadcast_address,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MaskRecovery,
+            &self.options.mask_recovery,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            MaskSupplier,
+            &self.options.mask_supplier,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            PerformRouterDiscovery,
+            &self.options.perform_router_discovery,
+        )?;
+        Self::put_opt_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            RouterSolicitationAddress,
+            &self.options.router_solicitation_address,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            TrailerEncapsulation,
+            &self.options.trailer_encapsulation,
+        )?;
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ArpTimeout,
+            &self.options.arp_timeout,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            EthernetEncapsulation,
+            &self.options.ethernet_encapsulation,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            DefaultTcpTtl,
+            &self.options.default_tcp_ttl,
+        )?;
+        Self::put_opt_u32(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            KeepaliveTime,
+            &self.options.keepalive_time,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            KeepaliveData,
+            &self.options.keepalive_data,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NisDomain,
+            &self.options.nis_domain,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NisServers,
+            &self.options.nis_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NtpServers,
+            &self.options.ntp_servers,
+        )?;
+        Self::put_opt_vec(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            VendorSpecific,
+            &self.options.vendor_specific,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NetbiosNameServers,
+            &self.options.netbios_name_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NetbiosDistributionServers,
+            &self.options.netbios_distribution_servers,
+        )?;
+        Self::put_opt_u8(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NetbiosNodeType,
+            &self.options.netbios_node_type,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NetbiosScope,
+            &self.options.netbios_scope,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            XWindowFontServers,
+            &self.options.x_window_font_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            XWindowManagerServers,
+            &self.options.x_window_manager_servers,
+        )?;
+        Self::put_opt_vec(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ClassId,
+            &self.options.class_id,
+        )?;
+        Self::put_opt_vec(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NetwareIpDomain,
+            &self.options.netware_ip_domain,
+        )?;
+        Self::put_opt_vec(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NetwareIpOption,
+            &self.options.netware_ip_option,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NisDomainName,
+            &self.options.nis_v3_domain_name,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NisServerAddress,
+            &self.options.nis_v3_servers,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            ServerName,
+            &self.options.server_name,
+        )?;
+        Self::put_opt_string(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            BootfileName,
+            &self.options.bootfile_name,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            HomeAgentAddresses,
+            &self.options.home_agent_addresses,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            SmtpServers,
+            &self.options.smtp_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            Pop3Servers,
+            &self.options.pop3_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            NntpServers,
+            &self.options.nntp_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            WwwServers,
+            &self.options.www_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            FingerServers,
+            &self.options.finger_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            IrcServers,
+            &self.options.irc_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            StreetTalkServers,
+            &self.options.street_talk_servers,
+        )?;
+        Self::put_opt_vec_ipv4(
+            &mut cursors[CURSOR_INDEX_MAIN],
+            StdaServers,
+            &self.options.stda_servers,
+        )?;
+
+        check_remaining!(cursors[CURSOR_INDEX_MAIN], mem::size_of::<u8>());
+        cursors[CURSOR_INDEX_MAIN].put_u8(End as u8);
+        if cursors[CURSOR_INDEX_FILE].position() > 0 {
+            cursors[CURSOR_INDEX_FILE].put_u8(End as u8);
+        }
+        if cursors[CURSOR_INDEX_SNAME].position() > 0 {
+            cursors[CURSOR_INDEX_SNAME].put_u8(End as u8);
+        }
+        Ok(cursors[CURSOR_INDEX_MAIN].position() as usize)
     }
 
+    /// Cannot be splitted.
     fn put_opt_u8(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -228,7 +528,7 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = mem::size_of::<u8>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             cursor.put_u8(*value);
@@ -236,6 +536,7 @@ impl Message {
         Ok(())
     }
 
+    /// Cannot be splitted.
     fn put_opt_u16(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -243,7 +544,7 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = mem::size_of::<u16>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             cursor.put_u16_be(*value);
@@ -251,6 +552,7 @@ impl Message {
         Ok(())
     }
 
+    /// Cannot be splitted.
     fn put_opt_u32(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -258,7 +560,7 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = mem::size_of::<u32>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             cursor.put_u32_be(*value);
@@ -266,6 +568,7 @@ impl Message {
         Ok(())
     }
 
+    /// Cannot be splitted.
     fn put_opt_ipv4(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -273,7 +576,7 @@ impl Message {
     ) -> io::Result<()> {
         if let Some(ref value) = value {
             let size = mem::size_of::<u32>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             cursor.put_u32_be(u32::from(*value));
@@ -281,6 +584,7 @@ impl Message {
         Ok(())
     }
 
+    /// Can be splitted.
     fn put_opt_string(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -291,7 +595,7 @@ impl Message {
                 return Ok(());
             }
             let size = value.len();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             cursor.put(value);
@@ -299,6 +603,7 @@ impl Message {
         Ok(())
     }
 
+    /// Can be splitted.
     fn put_opt_vec(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -309,7 +614,7 @@ impl Message {
                 return Ok(());
             }
             let size = value.len();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             cursor.put(value);
@@ -317,6 +622,7 @@ impl Message {
         Ok(())
     }
 
+    /// Can be splitted.
     fn put_opt_vec_u16(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -327,7 +633,7 @@ impl Message {
                 return Ok(());
             }
             let size = value.len() * mem::size_of::<u16>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             for element in value.iter() {
@@ -337,6 +643,7 @@ impl Message {
         Ok(())
     }
 
+    /// Can be splitted.
     fn put_opt_vec_ipv4(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -347,7 +654,7 @@ impl Message {
                 return Ok(());
             }
             let size = value.len() * mem::size_of::<u32>();
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             for element in value.iter() {
@@ -357,6 +664,7 @@ impl Message {
         Ok(())
     }
 
+    /// Can be splitted.
     fn put_opt_vec_ipv4_pairs(
         cursor: &mut io::Cursor<&mut [u8]>,
         tag: OptionTag,
@@ -367,7 +675,7 @@ impl Message {
                 return Ok(());
             }
             let size = value.len() * mem::size_of::<u32>() * 2;
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
+            check_remaining!(cursor, SIZE_OPTION_AFFIXES + size);
             cursor.put_u8(tag as u8);
             cursor.put_u8(size as u8);
             for element in value.iter() {
@@ -378,9 +686,12 @@ impl Message {
         Ok(())
     }
 
-    /// Described and explained [RFC 3442](https://tools.ietf.org/html/rfc3442).
+    /// Can be splitted.
+    /// The encoding algorithm explained at [RFC 3442](https://tools.ietf.org/html/rfc3442).
+    ///
+    /// The option is splitted by default.
     fn put_opt_classless_static_routes(
-        cursor: &mut io::Cursor<&mut [u8]>,
+        cursors: &mut [io::Cursor<&mut [u8]>; CURSOR_INDEX_TOTAL],
         tag: OptionTag,
         value: &Option<Vec<(Ipv4Addr, Ipv4Addr, Ipv4Addr)>>,
     ) -> io::Result<()> {
@@ -393,7 +704,6 @@ impl Message {
             const IPV4_BITSIZE: usize = mem::size_of::<u32>() * BITS_IN_BYTE;
             const MAX_DESCRIPTOR_SIZE: usize = 1 + mem::size_of::<u32>();
 
-            let mut size = value.len() * mem::size_of::<u32>();
             let mut descriptors = Vec::<Vec<u8>>::with_capacity(value.len());
             for element in value.iter() {
                 let subnet_number = element.0;
@@ -413,15 +723,53 @@ impl Message {
                         descriptor.push(subnet_number.octets()[i]);
                     }
                 }
-                size += descriptor.len();
                 descriptors.push(descriptor);
             }
-            check_remaining!(cursor, SIZE_OPTION_PREFIX + size);
-            cursor.put_u8(tag as u8);
-            cursor.put_u8(size as u8);
-            for i in 0..value.len() {
-                cursor.put(descriptors.get(i).unwrap());
-                cursor.put_u32_be(u32::from(value.get(i).unwrap().2.to_owned()));
+
+            let (mut i, mut j, mut c) = (0, 0, 0); // iterators
+            while c < cursors.len() {
+                let mut cursor = &mut cursors[c];
+                let affix_len = if c != CURSOR_INDEX_MAIN {
+                    SIZE_OPTION_AFFIXES // only the tag, the length and the END
+                } else {
+                    SIZE_OPTION_MAIN_AFFIXES // also some space for the 'overload' option
+                };
+
+                let mut len: usize = 0; // the length to be written by each cursor
+                let mut repeat = false;
+                while j < descriptors.len() {
+                    let size = descriptors.get(j).unwrap().len() + mem::size_of::<u32>();
+
+                    // find the range that can be written to the current buffer and the current option instance
+                    if cursor.remaining() >= affix_len + len + size && len + size <= SIZE_OPTION_MAX
+                    {
+                        len += size;
+                        j += 1;
+                    } else {
+                        repeat = len + size > SIZE_OPTION_MAX;
+                        break;
+                    }
+                }
+
+                if len > 0 {
+                    cursor.put_u8(tag as u8);
+                    cursor.put_u8(len as u8);
+                    for k in i..j {
+                        cursor.put(descriptors.get(k).unwrap());
+                        cursor.put_u32_be(u32::from(value.get(k).unwrap().2.to_owned()));
+                    }
+                    i = j;
+                    if !repeat {
+                        c += 1;
+                    }
+                }
+
+                if j >= descriptors.len() {
+                    break;
+                }
+            }
+            if j < descriptors.len() {
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "No more space left"));
             }
         }
         Ok(())

@@ -1,3 +1,5 @@
+//! The Windows implementation using `netsh` subprocess.
+
 use std::{io, net::Ipv4Addr, process::Command};
 
 use eui48::{MacAddress, MacAddressFormat};

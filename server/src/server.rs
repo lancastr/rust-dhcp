@@ -257,20 +257,24 @@ where
         response: Message,
         destination: Ipv4Addr,
         hw_unicast: bool,
+        max_size: Option<u16>,
     ) -> io::Result<()> {
         log_send!(response, destination);
 
         #[cfg(any(target_os = "freebsd", target_os = "macos"))]
         {
             if hw_unicast {
-                return self
-                    .bpf_data
-                    .send(&self.server_ip_address, &destination, response);
+                return self.bpf_data.send(
+                    &self.server_ip_address,
+                    &destination,
+                    response,
+                    max_size,
+                );
             }
         }
 
         let destination = SocketAddr::new(IpAddr::V4(destination), DHCP_PORT_CLIENT);
-        start_send!(self.socket, destination, response);
+        start_send!(self.socket, destination, response, max_size);
         Ok(())
     }
 }
@@ -319,6 +323,7 @@ where
                 Some(ref client_id) => client_id.as_ref(),
                 None => request.client_hardware_address.as_bytes(),
             };
+            let max_size = request.options.dhcp_max_message_size;
 
             match dhcp_message_type {
                 MessageType::DhcpDiscover => {
@@ -338,7 +343,7 @@ where
                         Ok(offer) => {
                             let response = self.builder.dhcp_discover_to_offer(&request, &offer);
                             let (destination, hw_unicast) = self.destination(&request, &response);
-                            self.send_response(response, destination, hw_unicast)?;
+                            self.send_response(response, destination, hw_unicast, max_size)?;
                         }
                         Err(error) => warn!("Address allocation error: {}", error.to_string()),
                     };
@@ -379,13 +384,13 @@ where
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 let (destination, hw_unicast) =
                                     self.destination(&request, &response);
-                                self.send_response(response, destination, hw_unicast)?;
+                                self.send_response(response, destination, hw_unicast, max_size)?;
                             }
                             Err(error) => {
                                 warn!("Address assignment error: {}", error.to_string());
                                 let response = self.builder.dhcp_request_to_nak(&request, &error);
                                 let destination = Ipv4Addr::new(255, 255, 255, 255);
-                                self.send_response(response, destination, false)?;
+                                self.send_response(response, destination, false, max_size)?;
                             }
                         };
                         continue;
@@ -400,7 +405,7 @@ where
                                 let response = self.builder.dhcp_request_to_ack(&request, &ack);
                                 let (destination, hw_unicast) =
                                     self.destination(&request, &response);
-                                self.send_response(response, destination, hw_unicast)?;
+                                self.send_response(response, destination, hw_unicast, max_size)?;
                             }
                             Err(error) => {
                                 warn!("Address checking error: {}", error.to_string());
@@ -408,7 +413,7 @@ where
                                     let response =
                                         self.builder.dhcp_request_to_nak(&request, &error);
                                     let destination = Ipv4Addr::new(255, 255, 255, 255);
-                                    self.send_response(response, destination, false)?;
+                                    self.send_response(response, destination, false, max_size)?;
                                 }
                                 /*
                                 RFC 2131 §4.3.2
@@ -429,7 +434,7 @@ where
                         Ok(ack) => {
                             let response = self.builder.dhcp_request_to_ack(&request, &ack);
                             let (destination, hw_unicast) = self.destination(&request, &response);
-                            self.send_response(response, destination, hw_unicast)?;
+                            self.send_response(response, destination, hw_unicast, max_size)?;
                         }
                         Err(error) => warn!("Address checking error: {}", error.to_string()),
                     }
@@ -480,7 +485,7 @@ where
                     );
                     let response = self.builder.dhcp_inform_to_ack(&request, "Accepted");
                     let (destination, hw_unicast) = self.destination(&request, &response);
-                    self.send_response(response, destination, hw_unicast)?;
+                    self.send_response(response, destination, hw_unicast, max_size)?;
                 }
                 _ => {}
             }
