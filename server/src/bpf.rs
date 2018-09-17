@@ -39,11 +39,11 @@ impl BpfData {
             cpu_pool: CpuPool::new(bpf_num_threads_size.unwrap_or(DEFAULT_BPF_NUM_THREADS_SIZE)),
             iface_hw_addr: {
                 let iface = Iface::find_by_name(iface_name).map_err(|error| match error {
-                    ifcontrol::Error(ifcontrol::ErrorKind::IfaceNotFound, _) => {
+                    ifcontrol::IfError::NotFound => {
                         io::Error::new(io::ErrorKind::Other, "Interface not found")
                     }
-                    ifcontrol::Error(ifcontrol::ErrorKind::Io(error), _) => error,
-                    ifcontrol::Error(error, _) => io::Error::new(
+                    ifcontrol::IfError::Io(error) => error,
+                    error => io::Error::new(
                         io::ErrorKind::Other,
                         format!("Failed to find the interface: {:?}", error),
                     ),

@@ -229,11 +229,9 @@ where
                 response.your_ip_address,
                 self.iface_name.to_owned(),
             ) {
-                Ok(_result) => {
-                    #[cfg(target_os = "windows")]
-                    {
-                        self.arp = Some(_result);
-                    }
+                Ok(_result) => #[cfg(target_os = "windows")]
+                {
+                    self.arp = Some(_result);
                 }
                 Err(error) => error!("ARP error: {:?}", error),
             }
@@ -429,8 +427,7 @@ where
 
                     // the client is in the RENEWING or REBINDING state
                     let lease_time = request.options.address_time;
-                    match self
-                        .database
+                    match self.database
                         .renew(client_id, &request.client_ip_address, lease_time)
                     {
                         Ok(ack) => {
