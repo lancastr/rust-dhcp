@@ -11,7 +11,7 @@ bytes = "0.4.8"
 eui48 = "0.3.2"
 chrono = "0.4.4"
 hostname = "0.1.5"
-rand = "0.5.3"
+rand = "0.6.1"
 dhcp-protocol = { path = "../protocol" }
 dhcp-framed = { path = "../framed" }
 net2 = "0.2.33"

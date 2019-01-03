@@ -62,7 +62,7 @@ impl Backoff {
 
     /// Construct a duration with -1/0/+1 second random offset.
     fn randomize(duration: &Duration) -> Duration {
-        let offset = rand::thread_rng().gen_range::<i32>(-AMPLITUDE, AMPLITUDE + 1);
+        let offset: i32 = rand::thread_rng().gen_range(-AMPLITUDE, AMPLITUDE + 1);
         let mut duration = Duration::from(duration.to_owned());
         if offset > 0 {
             duration += Duration::from_secs(offset as u64);
