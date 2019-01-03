@@ -18,7 +18,7 @@ dhcp-framed = { path = "../framed" }
 netif-bpf = { git = "https://github.com/glebpom/rust-netif", rev="master" }
 ifcontrol = { git = "https://github.com/glebpom/rust-netif", rev="master" }
 futures-cpupool = "0.1.8"
-eui48 = "0.3.2"
+eui48 = "0.4.1"
 etherparse = "0.7.1"
 arrayref = "0.3.4"
 
