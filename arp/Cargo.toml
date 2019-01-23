@@ -8,7 +8,7 @@ eui48 = "0.4.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.43"
-nix = "0.12.0"
+nix = "0.13.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 tokio-process = "0.2.2"
