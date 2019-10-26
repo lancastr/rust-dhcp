@@ -153,6 +153,84 @@ where
         address_time: Option<u32>,
         max_message_size: Option<u16>,
     ) -> Self {
+        Client::with_broadcast(
+            stream,
+            sink,
+            client_hardware_address,
+            client_id,
+            hostname,
+            server_address,
+            client_address,
+            address_request,
+            address_time,
+            max_message_size,
+            false
+        )
+    }
+
+    /// Creates a client future with the additional `broadcast`
+    /// parameter
+    ///
+    /// * `stream`
+    /// The external socket `Stream` part.
+    ///
+    /// * `sink`
+    /// The external socket `Sink` part.
+    ///
+    /// * `client_hardware_address`
+    /// The mandatory client MAC address.
+    ///
+    /// * `client_id`
+    /// The optional client identifier.
+    /// If `None`, is defaulted to the 6-byte MAC address.
+    ///
+    /// * `hostname`
+    /// May be explicitly set by a client user.
+    /// Otherwise it is defaulted to the machine hostname.
+    /// If the hostname cannot be get, remains unset.
+    ///
+    /// * `server_address`
+    /// The DHCP server address.
+    /// Set it if your know the server address.
+    /// If set, the client communicates with the server using unicast.
+    /// Otherwise, broadcasting to 255.255.255.255 is used.
+    ///
+    /// * `client_address`
+    /// The previous client address.
+    /// Set it if you want to reacquire your previous network address.
+    /// If set, the client is started in INIT-REBOOT state.
+    /// If unset, the client is started in INIT state.
+    ///
+    /// * `address_request`
+    /// The requested network address.
+    /// Set it if you want to request a specific network address.
+    /// If not set, a server will give you either
+    /// your current or previous address, or an address from its dynamic pool.
+    ///
+    /// * `address_time`
+    /// The requested lease time.
+    /// If not set, a server will choose the lease time by itself.
+    /// The server may lease the address for different amount of time if it decides so.
+    ///
+    /// * `max_message_size`
+    /// The maximum DHCP message size.
+    ///
+    /// * `broadcast`
+    /// If true, the client will ask DHCP server to use broadcasting.
+    ///
+    pub fn with_broadcast(
+        stream: I,
+        sink: O,
+        client_hardware_address: MacAddress,
+        client_id: Option<Vec<u8>>,
+        hostname: Option<String>,
+        server_address: Option<Ipv4Addr>,
+        client_address: Option<Ipv4Addr>,
+        address_request: Option<Ipv4Addr>,
+        address_time: Option<u32>,
+        max_message_size: Option<u16>,
+        broadcast: bool,
+    ) -> Self {
         let hostname: Option<String> = if hostname.is_none() {
             hostname::get_hostname()
         } else {
@@ -181,7 +259,7 @@ where
             None => DhcpState::Init,
         };
 
-        let state = State::new(dhcp_state, server_address, false);
+        let state = State::new(dhcp_state, server_address, broadcast);
 
         Client {
             stream,
