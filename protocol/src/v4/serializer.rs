@@ -84,7 +84,7 @@ impl Message {
         cursors[CURSOR_INDEX_MAIN].put_u8(self.hardware_options);
         cursors[CURSOR_INDEX_MAIN].put_u32_be(self.transaction_id);
         cursors[CURSOR_INDEX_MAIN].put_u16_be(self.seconds);
-        cursors[CURSOR_INDEX_MAIN].put_u16_be(if self.is_broadcast { 0x0001 } else { 0x0000 });
+        cursors[CURSOR_INDEX_MAIN].put_u16_be(if self.is_broadcast { 0x8000 } else { 0x0000 });
         cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.client_ip_address));
         cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.your_ip_address));
         cursors[CURSOR_INDEX_MAIN].put_u32_be(u32::from(self.server_ip_address));
