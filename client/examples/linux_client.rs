@@ -123,6 +123,7 @@ fn main() {
         address_request,
         address_time,
         max_message_size,
+        false,
     ));
 
     let future = client.map_err(|error| error!("Error: {}", error));
