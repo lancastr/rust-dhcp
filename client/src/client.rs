@@ -95,7 +95,7 @@ where
     I: Stream<Item = DhcpStreamItem, Error = io::Error> + Send + Sync,
     O: Sink<SinkItem = DhcpSinkItem, SinkError = io::Error> + Send + Sync,
 {
-    /// Creates a client future.
+    /// Creates a client future
     ///
     /// * `stream`
     /// The external socket `Stream` part.
@@ -141,6 +141,9 @@ where
     /// * `max_message_size`
     /// The maximum DHCP message size.
     ///
+    /// * `broadcast`
+    /// If true, the client will ask DHCP server to use broadcasting.
+    ///
     pub fn new(
         stream: I,
         sink: O,
@@ -152,6 +155,7 @@ where
         address_request: Option<Ipv4Addr>,
         address_time: Option<u32>,
         max_message_size: Option<u16>,
+        broadcast: bool,
     ) -> Self {
         let hostname: Option<String> = if hostname.is_none() {
             hostname::get_hostname()
@@ -181,7 +185,7 @@ where
             None => DhcpState::Init,
         };
 
-        let state = State::new(dhcp_state, server_address, false);
+        let state = State::new(dhcp_state, server_address, broadcast);
 
         Client {
             stream,
