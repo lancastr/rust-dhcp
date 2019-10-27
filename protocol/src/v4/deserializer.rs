@@ -69,7 +69,9 @@ impl Message {
             hardware_options: cursor.get_u8(),
             transaction_id: cursor.get_u32_be(),
             seconds: cursor.get_u16_be(),
-            is_broadcast: cursor.get_u16_be() & 0x0001 == 1,
+            // https://tools.ietf.org/html/rfc1700
+            // Leftmost bit (0 bit) is most significant
+            is_broadcast: cursor.get_u16_be() & 0x8000 != 0,
             client_ip_address: Ipv4Addr::from(cursor.get_u32_be()),
             your_ip_address: Ipv4Addr::from(cursor.get_u32_be()),
             server_ip_address: Ipv4Addr::from(cursor.get_u32_be()),
