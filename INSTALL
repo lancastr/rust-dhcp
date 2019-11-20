@@ -1,0 +1,20 @@
+
+This source tree is rust language, https://www.rust-lang.org/
+
+Build dependencies are
+ - rustc,  the rust compiler
+ - cargo,  the rust package tool and build tool
+
+
+To play[1] with what is currently available, do
+
+  cargo build --examples
+
+and find the output in target/debug/examples/
+
+
+
+
+
+Footnote
+[1] We don't feel comfortable to say that it is production ready
