@@ -11,6 +11,7 @@ use eui48::{EUI48LEN, MacAddress};
 use libc::{self, arpreq, c_char, c_int, c_ushort};
 use nix::{
     self,
+    ioctl_write_ptr_bad,
     sys::socket::{self, AddressFamily, SockFlag, SockType},
 };
 

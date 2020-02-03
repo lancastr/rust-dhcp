@@ -1,14 +1,6 @@
 //! Run this with administrator privileges where it is required
 //! in order to bind the DHCP server socket to its port 67 or use other OS-specific features.
 
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-extern crate tokio;
-
-extern crate dhcp_protocol;
-extern crate dhcp_server;
-
 use std::net::Ipv4Addr;
 
 use tokio::prelude::Future;

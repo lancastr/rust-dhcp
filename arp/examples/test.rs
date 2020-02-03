@@ -1,8 +1,5 @@
 //! Just adds an ARP entry.
 
-extern crate dhcp_arp;
-extern crate eui48;
-
 use std::net::Ipv4Addr;
 
 fn main() {

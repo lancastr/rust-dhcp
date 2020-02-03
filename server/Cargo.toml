@@ -2,15 +2,16 @@
 name = "dhcp-server"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 log = "0.4.3"
-tokio = "0.1.7"
-futures = "0.1.21"
-bytes = "0.4.8"
-hostname = "0.1.5"
+tokio = "0.2"
+futures = "0.3.1"
+bytes = "0.5"
+hostname = "0.3"
 chrono = "0.4.4"
-failure = "0.1.1"
+thiserror = "1.0"
 dhcp-protocol = { path = "../protocol" }
 dhcp-framed = { path = "../framed" }
 

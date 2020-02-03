@@ -2,8 +2,9 @@
 name = "dhcp-protocol"
 version = "0.1.1"
 authors = ["hedgar <hedgar2017@gmail.com>"]
+edition = "2018"
 
 [dependencies]
-bytes = "0.4.8"
+bytes = "0.5"
 eui48 = "0.4.1"
-failure = "0.1.1"
+thiserror = "1.0"

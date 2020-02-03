@@ -7,16 +7,6 @@ mod os;
 #[path = "windows.rs"]
 mod os;
 
-extern crate eui48;
-
-#[cfg(target_os = "linux")]
-extern crate libc;
-#[cfg(target_os = "linux")]
-#[macro_use]
-extern crate nix;
-#[cfg(target_os = "windows")]
-extern crate tokio_process;
-
 use std::net::Ipv4Addr;
 
 use eui48::MacAddress;

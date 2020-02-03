@@ -2,9 +2,10 @@
 name = "dhcp-framed"
 version = "0.1.0"
 authors = ["hedgar <hedgar2017@gmail.com>"]
+edition = "2018"
 
 [dependencies]
-tokio = "0.1.7"
-futures = "0.1.21"
+tokio = { version = "0.2", }
+futures = "0.3.1"
 net2 = "0.2.33"
 dhcp-protocol = { path = "../protocol" }

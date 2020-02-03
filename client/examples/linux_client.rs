@@ -2,22 +2,6 @@
 //! Works only under linux
 //! in order to bind the DHCP client socket to its port 68.
 
-#[macro_use]
-extern crate log;
-extern crate tokio;
-#[macro_use]
-extern crate futures;
-extern crate env_logger;
-extern crate eui48;
-extern crate rand;
-
-extern crate dhcp_client;
-extern crate dhcp_framed;
-extern crate dhcp_protocol;
-
-extern crate ifcontrol;
-extern crate net2;
-
 use std::{
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
